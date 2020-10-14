@@ -3,3 +3,4 @@ lpse.parms
 notebook.log
 .ipynb_checkpoints
 lpse_utils/__pycache__
+lpse_utils/.*

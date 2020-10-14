@@ -110,22 +110,27 @@ def get_fields(fname,ddict,dsample,plot=True):
         num = flt + 1j*0
       trck = tmp
     trck = 0
+
+  # Populate dictionary for return
+  ddict['time'] = hds['time']
+  assert hds['isXSpace'][0]=='t','Data in k space, need to modify code.'
+  xs = hds['gridSize'][0][0]/2.
+  x = np.linspace(-xs,xs,hds['Nx'][0])
+  ddict['x'] = x
+  ddict['data'] = np.empty((0,hds['Nx'][0]))
+  for i in range(cnt):
+    ddict['data'] = np.append(ddict['data'],np.array([cmplx[i+1]]),axis=0)
     
   
   # Optionally plot frames
   if (plot):
     for i in range(cnt):
-      assert hds['isXSpace'][i]=='t','Data in k space, need to modify code.'
-      xs = hds['gridSize'][i][0]/2.
-      x = np.linspace(-xs,xs,hds['Nx'][i])
-      plt.plot(x,np.imag(cmplx[i+1]),\
+      plt.plot(ddict['x'],np.imag(cmplx[i+1]),\
           label=f'imag {hds["FileType"][i]} {hds["time"][i]:0.3f}')
-      plt.plot(x,np.real(cmplx[i+1]),\
+      plt.plot(ddict['x'],np.real(cmplx[i+1]),\
           label=f'real {hds["FileType"][i]} {hds["time"][i]:0.3}')
        
       plt.legend()
       plt.show()
-    
-  
     
   return ddict
