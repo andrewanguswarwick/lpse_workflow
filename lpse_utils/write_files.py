@@ -25,7 +25,7 @@ def std_input(kwords,specs):
   f.close()
 
 # Extracts keywords and values from class object for writing to file
-def Package(obj,kwords=None,specs=None,prefix=None):
+def package(obj,kwords=None,specs=None,prefix=None):
     dic = obj.__dict__
     kys = list(dic.keys())
     if kwords is None:
@@ -37,14 +37,20 @@ def Package(obj,kwords=None,specs=None,prefix=None):
         if (att == None):
             continue
         elif (isinstance(att,obj.iclasses)):
-            Package(att,kwords,specs,i+'.')
+            prefix = str(prefix or '') + i + '.'
+            package(att,kwords,specs,prefix)
         else:
-            if prefix is None:
-                kwords.append(i)
-            else:
-                kwords.append(prefix+i)
+            kwords.append(str(prefix or '')+i)
             specs.append(att)
     return kwords, specs
+
+# Uses extracted keywords and values to update lpse.parms
+def std_write(self):        
+    kwords, specs = package(self)
+    std_input(kwords,specs)
+    print('Attributes written:')
+    adict = {i:j for i,j in zip(kwords,specs)}
+    print(adict)
 
 # Job control class
 class job_control:
@@ -54,7 +60,7 @@ class job_control:
         self.version = None # LPSE Version
         self.title = None # Title for run
         self.verbose = 2 # amount of output, value in range [-1,5]
-        self.seed = 0 # 0 for random, any other integer for repeatable results
+        self.seed = 0 # 0 for random, any other integer for fixed seed
         
         # Inner classes
         self.resources = self.Resources()
@@ -62,9 +68,8 @@ class job_control:
         # Create list of inner class types for checking against
         # Ensure this goes last
         self.iclasses = (self.Resources)
-        
 
-    # Missing additional job control inner classes for threads, locks, error trapping, and debugging aids
+    # Missing additional inner classes for threads, locks, error trapping, and debugging aids
     class Resources:
         def __init__(self):
             # Attributes with default values
@@ -74,7 +79,34 @@ class job_control:
             self.iclasses = ()
     
     # Methods
-    def write(self):        
-        kwords, specs = Package(self)
-        std_input(kwords,specs)
-        print('File written.')
+    write = std_write
+
+# Gridding class
+class gridding:
+    def __init__(self):
+        # Inner classes
+        self.grid = self.Grid()
+        self.iclasses = (self.Grid)
+
+    # Missing additional inner class for mpi nodes
+    class Grid:
+        def __init__(self):
+            # Attributes
+            self.sizes = None # Grid size in microns
+            self.nodes = None # Number of grid nodes
+            
+            # Inner classes
+            self.antiAliasing = self.AntiAliasing()
+            self.iclasses = (self.AntiAliasing)
+
+        class AntiAliasing:
+            def __init__(self):
+                # Attributes
+                self.range = 0.0 # Fractional range of ignored wavenumbers for anti-aliasing
+                self.isAutomatic = 'true' # Whether to automatically calculate
+                
+                # Inner classes
+                self.iclasses = ()
+    
+    # Methods
+    write = std_write
