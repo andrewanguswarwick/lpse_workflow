@@ -1,23 +1,6 @@
 #!/bin/python3
 
-# Produce light beamlets file
-def light_input(light_type,beams,specs):
-      
-  # Setup options
-  keywords = ['intensity','phase','polarization',\
-              'frequencyShift','group','direction',\
-              'evolution.source','evolution.offset',\
-              'evolution.width','evolution.sgOrder']
-
-  # Write file
-  f = open('lpse.parms', "a")
-  f.write(f'{light_type}.nBeams = {str(beams)};\n')
-  for i in range(beams):
-    for j in range(len(specs)):
-      f.write(f'{light_type}.{str(i+1)}.{keywords[j]} = {str(specs[j][i])};\n')
-  f.close()
-    
-# Produces standard #include file
+# Appends lpse.parms with keywords and specifications
 def std_input(kwords,specs):
   f = open('lpse.parms', "a")
   for i in range(len(kwords)):
@@ -375,7 +358,7 @@ class iaw_control:
         self.iclasses = ()
     class Fd:
       def __init__(self):
-        self.numStepsPerLandauUpdate = 1 
+        self.numStepsPerLandauUpdate = None
         self.iclasses = ()
     class Source:
       def __init__(self):
@@ -410,5 +393,67 @@ class instrumentation:
 # Light source class
 class light_source:
   def __init__(self):
-    self.nbeams = 0
-    self.iclasses = ()
+    self.laser = self.Light()
+    self.raman = self.Light()
+    self.iclasses = (self.Light)
+
+  class Light:
+    def __init__(self):
+      self.nBeams = 0
+      self.intensity = []
+      self.phase = []
+      self.polarization = []
+      self.direction = []
+      self.frequencyShift = []
+      self.group = []
+      self.onTheFlyInjection = None
+      self.tableLookupInjection = None
+      self.evolution = self.Evolution()
+      self.iclasses = (self.Evolution,Enable)
+    class Evolution:
+      def __init__(self):
+        self.source = []
+        self.offset = []
+        self.width = []
+        self.sgOrder = []
+        self.iclasses = ()
+
+  # Write method
+  def write(self,pout=True):
+    kwords, specs = light_package(self)
+    std_input(kwords,specs)
+    if pout:
+      print('Attributes written:')
+      adict = {i:j for i,j in zip(kwords,specs)}
+      print(adict)
+
+# Extracts keywords and values from class object for writing to file
+def light_package(obj,kwords=None,specs=None,prefix=None,nbeams=0):
+  dic = obj.__dict__
+  kys = list(dic.keys())
+  if kwords is None:
+    kwords = []
+  if specs is None:
+    specs = []
+  if kys[0] == 'nBeams':
+    nbeams = dic[kys[0]]
+  for i in kys[:-1]:
+    att = dic[i]
+    if (att == None):
+      continue
+    # If attribute an inner class recursively call light_package
+    elif (isinstance(att,obj.iclasses)):
+      prefixnew = str(prefix or '') + i + '.'
+      light_package(att,kwords,specs,prefixnew,nbeams)
+    # If attribute a list, add each element with beamlet number
+    elif isinstance(att,list):
+      for j in range(nbeams):
+        new_prefix = prefix[:6] + f'{j+1}.' + prefix[6:]
+        kwords.append(new_prefix+i)
+        specs.append(att[j])
+    else:
+      kwords.append(str(prefix or '')+i)
+      specs.append(att)
+  return kwords, specs
+
+
