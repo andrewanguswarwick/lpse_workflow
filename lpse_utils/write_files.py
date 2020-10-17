@@ -184,6 +184,11 @@ class io_control:
           self.iclasses = ()
 
   write = std_write
+  
+  # Return list of filenames used
+  def fnames(self):
+    kwords, specs = package(self)
+    return specs[1:]
 
 # Physical parameters class
 class physical_parameters:
