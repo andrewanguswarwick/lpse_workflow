@@ -37,6 +37,30 @@ def std_write(self,pout=True):
     adict = {i:j for i,j in zip(kwords,specs)}
     print(adict)
 
+# Uses extracted keywords and values to update lpse.parms
+def std_options(self):        
+  kwords = unwrap(self)
+  print('Possible attributes:')
+  for i in range(len(kwords)):
+    print(kwords[i])
+  print('')
+
+# Recursively returns basic attributes from nested classes
+def unwrap(obj,kwords=None,prefix=None):
+  dic = obj.__dict__
+  kys = list(dic.keys())
+  if kwords is None:
+    kwords = []
+  for i in kys[:-1]:
+    att = dic[i]
+    # If attribute an inner class recursively call package
+    if (isinstance(att,obj.iclasses)):
+      prefixnew = str(prefix or '') + i + '.'
+      unwrap(att,kwords,prefixnew)
+    else:
+      kwords.append(str(prefix or '')+i)
+  return kwords
+
 # Job control class
 class job_control:
   # Constructor
@@ -65,6 +89,7 @@ class job_control:
   
   # Methods
   write = std_write
+  options = std_options
 
 # Gridding class
 class gridding:
@@ -95,6 +120,7 @@ class gridding:
   
   # Methods
   write = std_write
+  options = std_options
 
 # Basic enable class
 class Enable:
@@ -113,6 +139,7 @@ class components:
     self.iclasses = (Enable)
 
   write = std_write
+  options = std_options
 
 # Temporal control class
 class temporal_control:
@@ -138,6 +165,7 @@ class temporal_control:
         self.iclasses = ()
   
   write = std_write
+  options = std_options
 
 # Io control class
 class io_control:
@@ -184,6 +212,7 @@ class io_control:
           self.iclasses = ()
 
   write = std_write
+  options = std_options
   
   # Return list of filenames used
   def fnames(self):
@@ -224,6 +253,7 @@ class physical_parameters:
       self.iclasses = ()
 
   write = std_write
+  options = std_options
 
 # Light control class
 class light_control:
@@ -292,6 +322,7 @@ class light_control:
           self.iclasses = ()
 
   write = std_write
+  options = std_options
 
 # Langmuir wave control class
 class lw_control:
@@ -336,6 +367,7 @@ class lw_control:
         self.iclasses = ()
 
   write = std_write
+  options = std_options
 
 # Ion acoustic wave control class
 class iaw_control:
@@ -377,6 +409,7 @@ class iaw_control:
         self.iclasses = ()
 
   write = std_write
+  options = std_options
 
 # Instrumentation class
 class instrumentation:
@@ -394,6 +427,7 @@ class instrumentation:
       self.iclasses = ()
 
   write = std_write
+  options = std_options
 
 # Light source class
 class light_source:
@@ -431,6 +465,9 @@ class light_source:
       print('Attributes written:')
       adict = {i:j for i,j in zip(kwords,specs)}
       print(adict)
+
+  # Options method
+  options = std_options
 
 # Extracts keywords and values from class object for writing to file
 def light_package(obj,kwords=None,specs=None,prefix=None,nbeams=0):
