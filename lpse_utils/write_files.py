@@ -68,8 +68,8 @@ class job_control:
     # Attributes with default values
     self.version = None # LPSE Version
     self.title = None # Title for run
-    self.verbose = 2 # amount of output, value in range [-1,5]
-    self.seed = 0 # 0 for random, any other integer for fixed seed
+    self.verbose = None # 2 # amount of output, value in range [-1,5]
+    self.seed = None # 0 # 0 for random, any other integer for fixed seed
     
     # Inner classes
     self.resources = self.Resources()
@@ -82,7 +82,7 @@ class job_control:
   class Resources:
     def __init__(self):
       # Attributes with default values
-      self.heartbeatInterval = 0 # minutes to output percentage completion, 0 disables
+      self.heartbeatInterval = None # 0 # minutes to output percentage completion, 0 disables
       
       # Inner class list
       self.iclasses = ()
@@ -112,8 +112,8 @@ class gridding:
     class AntiAliasing:
       def __init__(self):
         # Attributes
-        self.range = 0.0 # Fractional range of ignored wavenumbers for anti-aliasing
-        self.isAutomatic = 'true' # Whether to automatically calculate
+        self.range = None # 0.0 # Fractional range of ignored wavenumbers for anti-aliasing
+        self.isAutomatic = None # 'true' # Whether to automatically calculate
         
         # Inner classes
         self.iclasses = ()
@@ -124,18 +124,18 @@ class gridding:
 
 # Basic enable class
 class Enable:
-    def __init__(self,default):
-      self.enable = default
+    def __init__(self):
+      self.enable = None
       self.iclasses = ()
 
 # Components class
 class components:
   def __init__(self):
-    self.laser = Enable('false')
-    self.raman = Enable('false')
-    self.lw = Enable('false')
-    self.iaw = Enable('false')
-    self.hpe = Enable('false')
+    self.laser = Enable() # 'false'
+    self.raman = Enable() # 'false'
+    self.lw = Enable() # 'false'
+    self.iaw = Enable() # 'false'
+    self.hpe = Enable() # 'false'
     self.iclasses = (Enable)
 
   write = std_write
@@ -181,7 +181,7 @@ class io_control:
 
   class Grid:
     def __init__(self):
-      self.downSampleFactors = 1 # Spatial downsampling per dimension in output
+      self.downSampleFactors = None # 1 # Spatial downsampling per dimension in output
       self.iclasses = ()
 
   class Wave:
@@ -237,19 +237,19 @@ class physical_parameters:
 
   class Lw:
     def __init__(self):
-      self.envelopeDensity = 0.25 # EPW envelope fractional density
+      self.envelopeDensity = None # 0.25 # EPW envelope fractional density
       self.iclasses = ()
 
   class Density:
     def __init__(self):
-      self.shape = 'linear' # Density profile shape
-      self.geometry = 'cartesian' # Profile geometry
-      self.sgOrder = 2 # Order/power used in gaussian/inversePower profiles
+      self.shape = None # 'linear' # Density profile shape
+      self.geometry = None # 'cartesian' # Profile geometry
+      self.sgOrder = None # 2 # Order/power used in gaussian/inversePower profiles
       self.NminOverNc = None # Minimum fractional density
       self.NmaxOverNc = None # Maximum fractional density
       self.NminLocation = None # Minimum fractional density location
       self.NmaxLocation = None # Maximum fractional density location
-      self.temporalSlope = 0.0 # Fractional density change with time [ps^-1]
+      self.temporalSlope = None # 0.0 # Fractional density change with time [ps^-1]
       self.iclasses = ()
 
   write = std_write
@@ -264,61 +264,61 @@ class light_control:
 
   class Light:
     def __init__(self,laze):
-      self.solver = 'static' # Algorithm for light wave eqs.
-      self.ionAcousticPerturbations = Enable('false')
+      self.solver = None # 'static' # Algorithm for light wave eqs.
+      self.ionAcousticPerturbations = Enable() # 'false'
       self.static = self.Static()
       self.evolution = self.Evolution()
       self.spectral = self.Spectral()
       self.pulseShape = self.PulseShape()
       if laze:
-        self.wavelength = 0.351 # Laser wavelength [microns]
-        self.maxRamanStepsPerStep = 2 # Max raman steps per laser step
+        self.wavelength = None # 0.351 # Laser wavelength [microns]
+        self.maxRamanStepsPerStep = None # 2 # Max raman steps per laser step
         self.pumpDepletion = self.Pump()
         self.iclasses = (self.Pump,Enable,self.Static,self.Evolution,\
                          self.Spectral,self.PulseShape)
       else:
-        self.maxLaserStepsPerStep = 10 # Max laser steps per raman step
+        self.maxLaserStepsPerStep = None # 10 # Max laser steps per raman step
         self.sourceTerm = self.Source()
         self.iclasses = (self.Source,Enable,self.Static,self.Evolution,\
                          self.Spectral,self.PulseShape)
 
     class Pump:
       def __init__(self):
-        self.SRS = Enable('false') # SRS pump depletion
-        self.TPD = Enable('false') # TPD pump depletion
+        self.SRS = Enable() # 'false' # SRS pump depletion
+        self.TPD = Enable() # 'false' # TPD pump depletion
         self.iclasses = (Enable)
     class Source:
       def __init__(self):
-        self.lw = Enable('false') # Raman Lw source term
+        self.lw = Enable() # 'false' # Raman Lw source term
         self.iclasses = (Enable)
     class Static:
       def __init__(self):
-        self.computeFieldInXSpace = Enable('false') # Static light field computed in x-space
+        self.computeFieldInXSpace = Enable() # 'false' # Static light field computed in x-space
         self.iclasses = (Enable)
     class Spectral:
       def __init__(self):
-        self.dt = 2e-4 # Spectral solver timestep
+        self.dt = None # 2e-4 # Spectral solver timestep
         self.iclasses = ()
     class PulseShape:
       def __init__(self):
-        self.enable = 'false' # Scales the lights power according to pulse shape file
+        self.enable = None # 'false' # Scales the lights power according to pulse shape file
         self.file = None # Pulse shape filename
-        self.nPulsesToList = 25 # Max number of pulse shape entries to echo to output log
+        self.nPulsesToList = None # 25 # Max number of pulse shape entries to echo to output log
         self.iclasses = (Enable)
     class Evolution:
       # Missing additional evolution inner class for resonant absorption
       def __init__(self):
-        self.solverOrder = 2 # Finite differences solver order
-        self.dtFraction = 0.95 # Fraction of critical timestep
-        self.absorption = 0.0 # Collisional absorption coefficient [ps^-1]
-        self.Labc = 0 # Distance of absorption zone from boundary [microns]
-        self.Loff = 0.0 # Gap between absorbing boundary region and injection [microns]
-        self.riseTime = 30.0 # Beam rise time as 1/e point [fs]
+        self.solverOrder = None # 2 # Finite differences solver order
+        self.dtFraction = None # 0.95 # Fraction of critical timestep
+        self.absorption = None # 0.0 # Collisional absorption coefficient [ps^-1]
+        self.Labc = None # 0 # Distance of absorption zone from boundary [microns]
+        self.Loff = None # 0.0 # Gap between absorbing boundary region and injection [microns]
+        self.riseTime = None # 30.0 # Beam rise time as 1/e point [fs]
         self.abc = self.Abc()
         self.iclasses = (self.Abc)
       class Abc:
         def __init__(self):
-          self.type = 'pml' # Absorbing boundary type
+          self.type = None # 'pml' # Absorbing boundary type
           self.iclasses = ()
 
   write = std_write
@@ -332,18 +332,18 @@ class lw_control:
 
   class Lw:
     def __init__(self):
-      self.solver = 'spectral' # Solver which determines electrostatic potential
-      self.ionAcousticPerturbations = Enable('false') # Iaw source term
-      self.SRS = Enable('false') # SRS source term
-      self.TPD = Enable('false') # TPD source term
+      self.solver = None # 'spectral' # Solver which determines electrostatic potential
+      self.ionAcousticPerturbations = Enable() # 'false' # Iaw source term
+      self.SRS = Enable() # 'false' # SRS source term
+      self.TPD = Enable() # 'false' # TPD source term
       self.spectral = self.Spectral()
-      self.maxLightStepsPerStep = 10 # Max light steps per lw step
-      self.Labc = 0 # Distance of absorption zone from boundary [microns]
+      self.maxLightStepsPerStep = None # 10 # Max light steps per lw step
+      self.Labc = None # 0 # Distance of absorption zone from boundary [microns]
       self.abc = self.Abc()
       self.noise = self.Noise()
-      self.landauDamping = Enable('false') # Landau damping switch
-      self.collisionalDampingRate = 0.0 # [ps^-1]
-      self.__dict__['collisionalDampingRate.isCalculated'] = 'false' # Auto calc
+      self.landauDamping = Enable() # 'false' # Landau damping switch
+      self.collisionalDampingRate = None # 0.0 # [ps^-1]
+      self.__dict__['collisionalDampingRate.isCalculated'] = None # 'false' # Auto calc
       self.kFilter = self.KFilter()
       self.iclasses = (self.Spectral,self.Abc,self.Noise,Enable,self.KFilter)
     class Spectral:
@@ -352,18 +352,18 @@ class lw_control:
         self.iclasses = ()
     class Abc:
       def __init__(self):
-        self.type = 'exp' # Absorbing boundary type
+        self.type = None # 'exp' # Absorbing boundary type
         self.iclasses = ()
     class Noise:
       def __init__(self):
-        self.enable = 'false' # Lw eq. noise term
-        self.isCalculated = 'false' # Auto noise calculation (not working apparently)
-        self.amplitude = 0.0 # Amplitude of noise term
+        self.enable = None # 'false' # Lw eq. noise term
+        self.isCalculated = None # 'false' # Auto noise calculation (not working apparently)
+        self.amplitude = None # 0.0 # Amplitude of noise term
         self.iclasses = ()
     class KFilter:
       def __init__(self):
-        self.enable = 'false' # Filter spurious high wavenumbers
-        self.scale = 1.2 # Envelope factor for cutoff
+        self.enable = None # 'false' # Filter spurious high wavenumbers
+        self.scale = None # 1.2 # Envelope factor for cutoff
         self.iclasses = ()
 
   write = std_write
@@ -379,15 +379,15 @@ class iaw_control:
 
   class Iaw:
     def __init__(self):
-      self.solver = 'spectral'
+      self.solver = None # 'spectral'
       self.sourceTerm = self.Source()
       self.spectral = self.Spectral()
       self.fd = self.Fd()
-      self.maxLightStepsPerStep = 10 
-      self.maxLwStepsPerStep = 2 
-      self.Labc = 0 # Distance of absorption zone from boundary [microns]
+      self.maxLightStepsPerStep = None # 10 
+      self.maxLwStepsPerStep = None # 2 
+      self.Labc = None # 0 # Distance of absorption zone from boundary [microns]
       self.abc = self.Abc()
-      self.dampingRate = 0.0 # [0.0,1.0] normalised landau damping rate
+      self.dampingRate = None # 0.0 # [0.0,1.0] normalised landau damping rate
       self.iclasses = (self.Source,self.Spectral,self.Abc,self.Fd)
     class Spectral:
       def __init__(self):
@@ -399,13 +399,13 @@ class iaw_control:
         self.iclasses = ()
     class Source:
       def __init__(self):
-        self.lw = Enable('false')
-        self.laser = Enable('false')
-        self.raman = Enable('false')
+        self.lw = Enable() # 'false'
+        self.laser = Enable() # 'false'
+        self.raman = Enable() # 'false'
         self.iclasses = (Enable)
     class Abc:
       def __init__(self):
-        self.type = 'exp' # Absorbing boundary type
+        self.type = None # 'exp' # Absorbing boundary type
         self.iclasses = ()
 
   write = std_write
@@ -421,9 +421,9 @@ class instrumentation:
 
   class Metrics:
     def __init__(self):
-      self.enable = 'false'
+      self.enable = None # 'false'
       self.file = None
-      self.samplePeriod = 0.0 # [ps], if 0 then saved on longest sim timescale
+      self.samplePeriod = None # 0.0 # [ps], if 0 then saved on longest sim timescale
       self.iclasses = ()
 
   write = std_write
@@ -438,7 +438,7 @@ class light_source:
 
   class Light:
     def __init__(self):
-      self.nBeams = 0
+      self.nBeams = None # 0
       self.intensity = []
       self.phase = []
       self.polarization = []
