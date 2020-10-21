@@ -4,8 +4,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import struct
 import copy
+import os
+import sys; sys.path.insert(0,'.')
+import lpse_utils.write_files as wf
 
-def get_metrics(plot=True):
+def get_metrics(fname,plot=True):
 
   # Read file and extract data
   cutoff = 3 # Number of rows of file header to exclude
@@ -134,3 +137,66 @@ def get_fields(fname,ddict,dsample,plot=True):
       plt.show()
     
   return ddict
+
+# Class for running lpse, then extracting and plotting results
+class lpse_case:
+  def __init__(self):
+    self.setup_classes = []
+    self.np = 1
+    self.bin = None
+    self.dfp = './data/lpse.'
+    self.mkeys = None
+    self.mdat = None
+    self.fkeys = None
+    self.fdat = None
+
+  # Methods 
+  def write(self,pout=False):
+    os.system('> lpse.parms')
+    for i in self.setup_classes:
+      i.write(pout)
+    if len(self.setup_classes) == 0:
+      print('write() error: No setup classes specified.')
+
+  def run(self):
+    if self.bin == None:
+      print('run() error: Must specify binary location.')
+      return
+    if not os.path.exists('data'):
+      os.system('mkdir data')
+    os.system('mpirun -np ' + str(self.np) + \
+               ' ' + self.bin + ' --parms=lpse.parms')
+
+  def metrics(self,plot=True):
+    # Get file name and extract data
+    for i in self.setup_classes:
+      if isinstance(i,wf.instrumentation):
+        fname = i.metrics.file
+    self.mkeys, self.mdat = get_metrics(fname,plot)
+
+  def fields(self,plot=True,fname=None):
+    # Remove file prefix from dict keys
+    for i in self.setup_classes:
+      if isinstance(i,wf.io_control):
+        fnames = i.fnames()
+        dsamp = i.grid.downSampleFactors
+    kys = [fnames[i].replace(self.dfp,'') \
+                for i in range(len(fnames))]
+
+    # If no filename given do all data files
+    if fname == None:
+      self.fdat = {i:{} for i in kys}
+      self.fkeys = kys
+      for i in range(len(fnames)):
+          self.fdat[kys[i]] = \
+            get_fields(fnames[i],self.fdat[kys[i]],dsamp,plot) 
+    else:
+      ky = fname.replace(self.dfp,'')
+      if self.fdat == None:
+        self.fdat = {ky:{}}
+        self.fkeys = [ky]
+      elif ky not in self.fdat:
+        self.fkeys.append(ky)
+        self.fdat[ky] = {}
+      self.fdat[ky] = \
+        get_fields(fname,self.fdat[ky],dsamp,plot) 
