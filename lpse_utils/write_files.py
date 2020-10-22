@@ -489,7 +489,7 @@ def light_package(obj,kwords=None,specs=None,prefix=None,nbeams=0):
       light_package(att,kwords,specs,prefixnew,nbeams)
     # If attribute a list, add each element with beamlet number
     elif isinstance(att,list):
-      for j in range(nbeams):
+      for j in range(nbeams or 0):
         new_prefix = prefix[:6] + f'{j+1}.' + prefix[6:]
         kwords.append(new_prefix+i)
         specs.append(att[j])

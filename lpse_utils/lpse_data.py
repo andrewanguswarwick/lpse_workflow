@@ -8,7 +8,7 @@ import os
 import sys; sys.path.insert(0,'.')
 import lpse_utils.write_files as wf
 
-def get_metrics(fname,plot=True):
+def get_metrics(fname,plot=False):
 
   # Read file and extract data
   cutoff = 3 # Number of rows of file header to exclude
@@ -44,7 +44,7 @@ def get_metrics(fname,plot=True):
 
   return cols, dat
 
-def get_fields(fname,ddict,dsample,plot=True):
+def get_fields(fname,ddict,dsample,plot=False):
 
   # If downsampling append suffix
   if (dsample > 1):
@@ -186,7 +186,7 @@ class lpse_case:
     if self.verbose:
       print('LPSE run complete.')
 
-  def metrics(self,plot=True):
+  def metrics(self,plot=False):
     # Get file name and extract data
     for i in self.setup_classes:
       if isinstance(i,wf.instrumentation):
@@ -195,7 +195,7 @@ class lpse_case:
     if self.verbose:
       print('Metrics data extracted.')
 
-  def fields(self,plot=True,fname=None):
+  def fields(self,plot=False,fname=None):
     # Remove file prefix from dict keys
     for i in self.setup_classes:
       if isinstance(i,wf.io_control):
