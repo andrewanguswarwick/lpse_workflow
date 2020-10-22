@@ -5,8 +5,7 @@ import numpy as np
 import struct
 import copy
 import os
-import sys; sys.path.insert(0,'.')
-import lpse_utils.write_files as wf
+import write_files as wf
 
 def get_metrics(fname,plot=False):
 

@@ -1,7 +1,6 @@
 #!/bin/python3
 
-import sys; sys.path.insert(0,'..')
-import lpse_utils.write_files as wf
+import write_files as wf
 import numpy as np
 
 def Isrs(case,tavg):
