@@ -149,14 +149,31 @@ class lpse_case:
     self.mdat = None
     self.fkeys = None
     self.fdat = None
+    self.verbose = False
 
   # Methods 
+  def add_class(self,obj):
+    exs_types = [type(i) for i in self.setup_classes]
+    added = False
+    for i in range(len(exs_types)):
+      if type(obj) == exs_types[i]:
+        self.setup_classes[i] = obj
+        added = True
+        if self.verbose:
+          print('Existing setup class of this type overwritten.')
+    if not added:
+      self.setup_classes.append(obj)
+      if self.verbose:
+        print('Setup class added.')
+
   def write(self,pout=False):
     os.system('> lpse.parms')
     for i in self.setup_classes:
       i.write(pout)
     if len(self.setup_classes) == 0:
       print('write() error: No setup classes specified.')
+    if self.verbose:
+      print('File \'lpse.parms\' written.')
 
   def run(self):
     if self.bin == None:
@@ -166,6 +183,8 @@ class lpse_case:
       os.system('mkdir data')
     os.system('mpirun -np ' + str(self.np) + \
                ' ' + self.bin + ' --parms=lpse.parms')
+    if self.verbose:
+      print('LPSE run complete.')
 
   def metrics(self,plot=True):
     # Get file name and extract data
@@ -173,6 +192,8 @@ class lpse_case:
       if isinstance(i,wf.instrumentation):
         fname = i.metrics.file
     self.mkeys, self.mdat = get_metrics(fname,plot)
+    if self.verbose:
+      print('Metrics data extracted.')
 
   def fields(self,plot=True,fname=None):
     # Remove file prefix from dict keys
@@ -200,3 +221,5 @@ class lpse_case:
         self.fdat[ky] = {}
       self.fdat[ky] = \
         get_fields(fname,self.fdat[ky],dsamp,plot) 
+    if self.verbose:
+      print('Fields data extracted.')
