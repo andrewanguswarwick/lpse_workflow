@@ -7,7 +7,7 @@ import copy
 import os
 import write_files as wf
 
-def get_metrics(fname,plot=False):
+def get_metrics(fname):
 
   # Read file and extract data
   cutoff = 3 # Number of rows of file header to exclude
@@ -33,17 +33,9 @@ def get_metrics(fname,plot=False):
   for i in range(ncols):
     ddict[cols[i]] = dat[:,i]
   
-  # Optionally plot data
-  if (plot):
-    for i in range(1,ncols):
-      plt.plot(dat[:,0],dat[:,i],ls='-')
-      plt.xlabel(cols[0])
-      plt.ylabel(cols[i])
-      plt.show()
+  return cols, ddict
 
-  return cols, dat
-
-def get_fields(fname,ddict,dsample,plot=False):
+def get_fields(fname,ddict,dsample):
 
   # If downsampling append suffix
   if (dsample > 1):
@@ -123,18 +115,6 @@ def get_fields(fname,ddict,dsample,plot=False):
   for i in range(cnt):
     ddict['data'] = np.append(ddict['data'],np.array([cmplx[i+1]]),axis=0)
     
-  
-  # Optionally plot frames
-  if (plot):
-    for i in range(cnt):
-      plt.plot(ddict['x'],np.imag(cmplx[i+1]),\
-          label=f'imag {hds["FileType"][i]} {hds["time"][i]:0.3f}')
-      plt.plot(ddict['x'],np.real(cmplx[i+1]),\
-          label=f'real {hds["FileType"][i]} {hds["time"][i]:0.3}')
-       
-      plt.legend()
-      plt.show()
-    
   return ddict
 
 # Class for running lpse, then extracting and plotting results
@@ -185,16 +165,16 @@ class lpse_case:
     if self.verbose:
       print('LPSE run complete.')
 
-  def metrics(self,plot=False):
+  def metrics(self):
     # Get file name and extract data
     for i in self.setup_classes:
       if isinstance(i,wf.instrumentation):
         fname = i.metrics.file
-    self.mkeys, self.mdat = get_metrics(fname,plot)
+    self.mkeys, self.mdat = get_metrics(fname)
     if self.verbose:
       print('Metrics data extracted.')
 
-  def fields(self,plot=False,fname=None):
+  def fields(self,fname=None):
     # Remove file prefix from dict keys
     for i in self.setup_classes:
       if isinstance(i,wf.io_control):
@@ -209,7 +189,7 @@ class lpse_case:
       self.fkeys = kys
       for i in range(len(fnames)):
           self.fdat[kys[i]] = \
-            get_fields(fnames[i],self.fdat[kys[i]],dsamp,plot) 
+            get_fields(fnames[i],self.fdat[kys[i]],dsamp) 
     else:
       ky = fname.replace(self.dfp,'')
       if self.fdat == None:
@@ -219,6 +199,25 @@ class lpse_case:
         self.fkeys.append(ky)
         self.fdat[ky] = {}
       self.fdat[ky] = \
-        get_fields(fname,self.fdat[ky],dsamp,plot) 
+        get_fields(fname,self.fdat[ky],dsamp) 
     if self.verbose:
       print('Fields data extracted.')
+
+  def plot_metric(self,ky):
+    xdat = self.mdat['time']
+    ydat = self.mdat[ky]
+    plt.plot(xdat,ydat,label=ky)
+    plt.xlabel('Time [ps]')
+    plt.legend()
+    plt.show()
+
+  def plot_field(self,ky):
+    xdat = self.fdat[ky]['x']
+    ydat = self.fdat[ky]['data']
+    tdat = self.fdat[ky]['time']
+    snaps = len(tdat)
+    for i in range(snaps):
+      plt.plot(xdat,np.imag(ydat[i]),label=f'imag {ky} {tdat[i]:0.3f}')
+      plt.plot(xdat,np.real(ydat[i]),label=f'real {ky} {tdat[i]:0.3f}')
+      plt.legend()
+      plt.show()
