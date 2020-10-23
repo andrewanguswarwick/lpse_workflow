@@ -292,7 +292,6 @@ class lpse_case:
     button = Button(resetax, 'Reset', color=axcolor, hovercolor='0.975')
 
     def reset(event):
-        button.description = 'clicked'
         stime.reset()
     button.on_clicked(reset)
 
