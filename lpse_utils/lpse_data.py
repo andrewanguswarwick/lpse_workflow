@@ -6,6 +6,7 @@ import struct
 import copy
 import os
 import write_files as wf
+from matplotlib.widgets import Slider, Button, RadioButtons
 
 def get_metrics(fname):
 
@@ -213,11 +214,86 @@ class lpse_case:
 
   def plot_field(self,ky):
     xdat = self.fdat[ky]['x']
-    ydat = self.fdat[ky]['data']
+    ydat = np.real(self.fdat[ky]['data'])
     tdat = self.fdat[ky]['time']
+    argtime = 0
     snaps = len(tdat)
-    for i in range(snaps):
-      plt.plot(xdat,np.imag(ydat[i]),label=f'imag {ky} {tdat[i]:0.3f}')
-      plt.plot(xdat,np.real(ydat[i]),label=f'real {ky} {tdat[i]:0.3f}')
-      plt.legend()
-      plt.show()
+
+    fig, ax = plt.subplots()
+    plt.subplots_adjust(bottom=0.15)
+    l, = plt.plot(xdat,ydat[argtime])
+    ax.margins(x=0)
+
+    axcolor = 'lightgoldenrodyellow'
+    axtime = plt.axes([0.10, 0.05, 0.8, 0.03], facecolor=axcolor)
+    delta_t = tdat[1]-tdat[0]
+    stime = Slider(axtime, 'Time', tdat[0], tdat[-1], valinit=tdat[0], valstep=delta_t)
+
+    def update(val):
+        nonlocal argtime
+        time = stime.val
+        objf = abs(tdat-time)
+        argtime = np.argmin(objf)
+        l.set_ydata(ydat[argtime])
+        ax.relim()
+        ax.autoscale_view()
+        fig.canvas.draw_idle()
+
+    stime.on_changed(update)
+
+    plt.show()
+    
+  def plot_fields(self):
+    ky = self.fkeys[0]
+    xdat = self.fdat[ky]['x']
+    ydat = np.real(self.fdat[ky]['data'])
+    tdat = self.fdat[ky]['time']
+    argtime = 0
+    snaps = len(tdat)
+
+    fig, ax = plt.subplots()
+    plt.subplots_adjust(left=0.25, bottom=0.25)
+    l, = plt.plot(xdat,ydat[argtime])
+    ax.margins(x=0)
+
+    axcolor = 'lightgoldenrodyellow'
+    rax = plt.axes([0.025, 0.5, 0.075, 0.25], facecolor=axcolor)
+    radio = RadioButtons(rax, [i for i in self.fkeys], active=0)
+
+    def change_field(ky):
+        nonlocal ydat
+        nonlocal argtime
+        ydat = np.real(self.fdat[ky]['data'])
+        l.set_ydata(ydat[argtime])
+        ax.relim()
+        ax.autoscale_view()
+        fig.canvas.draw_idle()
+
+    radio.on_clicked(change_field)
+
+    axtime = plt.axes([0.25, 0.15, 0.65, 0.03], facecolor=axcolor)
+
+    delta_t = tdat[1]-tdat[0]
+    stime = Slider(axtime, 'Time', tdat[0], tdat[-1], valinit=tdat[0], valstep=delta_t)
+
+    def update(val):
+        nonlocal argtime
+        time = stime.val
+        objf = abs(tdat-time)
+        argtime = np.argmin(objf)
+        l.set_ydata(ydat[argtime])
+        ax.relim()
+        ax.autoscale_view()
+        fig.canvas.draw_idle()
+
+    stime.on_changed(update)
+
+    resetax = plt.axes([0.8, 0.025, 0.1, 0.04])
+    button = Button(resetax, 'Reset', color=axcolor, hovercolor='0.975')
+
+    def reset(event):
+        button.description = 'clicked'
+        stime.reset()
+    button.on_clicked(reset)
+
+    plt.show()
