@@ -2,6 +2,8 @@
 
 import write_files as wf
 import numpy as np
+from scipy.optimize import minimize_scalar
+from GPyOpt.methods import BayesianOptimization
 
 def Isrs(case,tavg):
   # Write lpse.parms and run case
@@ -29,10 +31,14 @@ def Isrs(case,tavg):
   whe = np.argwhere(xdat > xmin)
   Isrs = 0
   for i in range(touts):
-    Sdat = np.real(case.fdat[ky]['data'][-i+1,:])
-    Isrs += Sdat[whe][0,0]
+    # Error handling returns Isrs = 0 if dict read fails
+    try:
+      Sdat = np.real(case.fdat[ky]['data'][-i+1,:])
+      Isrs += Sdat[whe][0,0]
+    except:
+      Isrs = 0.0
   Isrs /= touts  
-  return Isrs
+  return abs(Isrs)
 
 def noise_amp(amp,case,tavg):
   # Set lw noise attribute to amp
@@ -42,3 +48,46 @@ def noise_amp(amp,case,tavg):
   
   # Return Isrs
   return Isrs(case,tavg)
+
+def test_amp(amp,case,tavg):
+  return amp*5.333333e12
+
+def Isrs_curve(case,tavg,Isrs0,Irange):
+  # Ensure laser intensity is base value
+  for i in case.setup_classes:
+    if isinstance(i,wf.light_source):
+      i.laser.intensity = [Irange[0]]
+  # Perform short golden search iteration to get noise
+  print('Finding optimum LW noise amplitude...')
+  objf = lambda amp: abs(noise_amp(amp[0,0],case,tavg)-Isrs0)
+  domain = [{'name':'amp','type':'continuous','domain':(0.005,0.025)}]
+  Bopt = BayesianOptimization(f=objf,domain=domain)
+  Bopt.run_optimization(max_iter=15)
+  Bopt.plot_acquisition()
+  amp0 = Bopt.x_opt[0]
+  f0 = Bopt.fx_opt
+  print(f'Best LW noise amplitude is: {amp0:0.5f}')
+  print(f'Giving base <I_srs>: {f0:0.3e} W/cm^2')
+
+  # Use result and get Isrs for range of laser intensities
+  for i in case.setup_classes:
+    if isinstance(i,wf.lw_control):
+      i.lw.noise.amplitude = amp0
+  Isrsvals = np.zeros_like(Irange)
+  print('Obtaining <I_srs> for laser intensity range...')
+  print('0% complete.',end='\r')
+  for j,I in enumerate(Irange):
+    for i in case.setup_classes:
+      if isinstance(i,wf.light_source):
+        i.laser.intensity = [str(I)]
+    Isrsvals[j] = Isrs(case,tavg)
+    print(f'{(j+1)/len(Irange):0.1%} complete.',end='\r')
+
+  return Isrsvals
+
+def Isrs_dens(case,dens,dlabs,tavg,Isrs0,Irange):
+  isrs = {i:None for i in dlabs}
+  for i in range(len(dens)):
+    case.add_class(dens[i])
+    isrs[dlabs[i]] = Isrs_curve(case,tavg,Isrs0,Irange)
+  return isrs
