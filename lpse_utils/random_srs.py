@@ -2,8 +2,9 @@
 
 import write_files as wf
 import numpy as np
-from scipy.optimize import minimize_scalar
 from GPyOpt.methods import BayesianOptimization
+import copy
+from functools import partial
 
 def Isrs(case,tavg):
   # Write lpse.parms and run case
@@ -36,12 +37,15 @@ def Isrs(case,tavg):
       Sdat = np.real(case.fdat[ky]['data'][-i+1,:])
       Isrs += Sdat[whe][0,0]
     except:
+      print('Error: LPSE run terminated prematurely')
       Isrs = 0.0
   Isrs /= touts  
   return abs(Isrs)
 
 def noise_amp(amp,case,tavg):
   # Set lw noise attribute to amp
+  if not isinstance(amp,float):
+    amp = amp[0] # For parallel runs
   for i in case.setup_classes:
     if isinstance(i,wf.lw_control):
       i.lw.noise.amplitude = amp
@@ -91,3 +95,15 @@ def Isrs_dens(case,dens,dlabs,tavg,Isrs0,Irange):
     case.add_class(dens[i])
     isrs[dlabs[i]] = Isrs_curve(case,tavg,Isrs0,Irange)
   return isrs
+
+# Gets training set for GPyOpt of LW noise amp
+def amp_par(case,dens,dlabs,tavg,cpus,train):
+  amps = np.linspace(0.005,0.025,train)
+  amps = np.reshape(amps,(train,1))
+  x0 = {i:amps for i in dlabs}; y0 = {}
+  for i in range(len(dlabs)):
+    case.add_class(dens[i])
+    func = partial(noise_amp,case=case,tavg=tavg)
+    y0[dlabs[i]] = case.parallel_runs(func,amps,cpus)
+  
+  return x0, y0

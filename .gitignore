@@ -1,6 +1,6 @@
 data/
 lpse.parms
-notebook.log
+*.log
 .ipynb_checkpoints
 */__pycache__
 lpse_utils/.*

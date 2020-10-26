@@ -6,7 +6,21 @@ import struct
 import copy
 import os
 import write_files as wf
+import multiprocessing as mp
+import ray
+from functools import partial
 from matplotlib.widgets import Slider, Button, RadioButtons
+
+# Function which wraps serial function for executing in parallel directories
+@ray.remote
+def parallel_wrap(inp,idx,func):
+  d = f'./parallel/task{idx}'
+  os.mkdir(d)
+  os.chdir(d)
+  res = func(inp)
+  os.chdir('../..')
+  os.system(f'rm -r {d}')
+  return res
 
 def get_metrics(fname):
 
@@ -118,6 +132,7 @@ def get_fields(fname,ddict,dsample):
     
   return ddict
 
+
 # Class for running lpse, then extracting and plotting results
 class lpse_case:
   def __init__(self):
@@ -161,10 +176,15 @@ class lpse_case:
       return
     if not os.path.exists('data'):
       os.system('mkdir data')
-    os.system('mpirun -np ' + str(self.np) + \
-               ' ' + self.bin + ' --parms=lpse.parms')
+    if self.np == 1:
+      cmnd = f'{self.bin} --parms=lpse.parms'
+    else:
+      cmnd = f'mpirun -np {self.np} {self.bin} --parms=lpse.parms'
     if self.verbose:
+      os.system(cmnd)
       print('LPSE run complete.')
+    else:
+      os.system(cmnd + ' > run.log')
 
   def metrics(self):
     # Get file name and extract data
@@ -296,3 +316,30 @@ class lpse_case:
     button.on_clicked(reset)
 
     plt.show()
+
+  # Method which takes function, and 2D array of inputs
+  # Then runs in parallel for each set of inputs
+  # Returning 2D array of outputs
+  def parallel_runs(self,func,inps,nps):
+    
+    # Ensure number of requested processors is reasonable
+    assert (nps <= mp.cpu_count()),\
+        "Error: number of processors selected exceeds available."
+    
+    # Create parallel directory for tasks
+    os.system('mkdir parallel')
+
+    # Run function in parallel    
+    ray.init(num_cpus=nps)
+    l = len(inps)
+    outs = ray.get([parallel_wrap.remote(inps[i],i,func) for i in range(l)])
+    ray.shutdown()
+    
+    # Reshape outputs to 2D array
+    if isinstance(outs[0],list):
+      ll = len(outs[0])
+    else:
+      ll = 1
+    outs = np.array(outs).reshape((l,ll))
+
+    return outs
