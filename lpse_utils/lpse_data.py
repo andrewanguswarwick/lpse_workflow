@@ -15,11 +15,11 @@ from matplotlib.widgets import Slider, Button, RadioButtons
 @ray.remote
 def parallel_wrap(inp,idx,func):
   d = f'./parallel/task{idx}'
-  os.mkdir(d)
+  os.system(f'mkdir {d}')
   os.chdir(d)
   res = func(inp)
   os.chdir('../..')
-  os.system(f'rm -r {d}')
+  os.system(f'rm -r {d}/data')
   return res
 
 def get_metrics(fname):
@@ -330,7 +330,7 @@ class lpse_case:
     os.system('mkdir parallel')
 
     # Run function in parallel    
-    ray.init(num_cpus=nps)
+    ray.init(num_cpus=nps,log_to_driver=False)
     l = len(inps)
     outs = ray.get([parallel_wrap.remote(inps[i],i,func) for i in range(l)])
     ray.shutdown()

@@ -53,57 +53,83 @@ def noise_amp(amp,case,tavg):
   # Return Isrs
   return Isrs(case,tavg)
 
-def test_amp(amp,case,tavg):
-  return amp*5.333333e12
+def Isrs_las(Ilas,case,tavg):
+  # Set laser beam intensity to input
+  if not isinstance(Ilas,float):
+    Ilas = Ilas[0] # For parallel runs
+  for i in case.setup_classes:
+    if isinstance(i,wf.light_source):
+      i.laser.intensity = [Ilas]
+  
+  # Return Isrs
+  return Isrs(case,tavg)
 
-def Isrs_curve(case,tavg,Isrs0,Irange):
+def Isrs_curve(case,tavg,Isrs0,Irange,X0,Y0,parallel,cpus):
   # Ensure laser intensity is base value
   for i in case.setup_classes:
     if isinstance(i,wf.light_source):
       i.laser.intensity = [Irange[0]]
-  # Perform short golden search iteration to get noise
+
+  # Use Bayesian optimisation to fit LW noise amplitude
   print('Finding optimum LW noise amplitude...')
   objf = lambda amp: abs(noise_amp(amp[0,0],case,tavg)-Isrs0)
   domain = [{'name':'amp','type':'continuous','domain':(0.005,0.025)}]
-  Bopt = BayesianOptimization(f=objf,domain=domain)
-  Bopt.run_optimization(max_iter=15)
+  Bopt = BayesianOptimization(f=objf,domain=domain,X=X0,Y=Y0)
+  Bopt.run_optimization(max_iter=5)
   Bopt.plot_acquisition()
   amp0 = Bopt.x_opt[0]
   f0 = Bopt.fx_opt
   print(f'Best LW noise amplitude is: {amp0:0.5f}')
-  print(f'Giving base <I_srs>: {f0:0.3e} W/cm^2')
+  print(f'Giving an <I_srs> error of: {f0:0.3e} W/cm^2')
 
-  # Use result and get Isrs for range of laser intensities
+  # Set case LW noise to optimum
   for i in case.setup_classes:
     if isinstance(i,wf.lw_control):
       i.lw.noise.amplitude = amp0
-  Isrsvals = np.zeros_like(Irange)
+
+  # Get Isrs for range of laser intensities
   print('Obtaining <I_srs> for laser intensity range...')
-  print('0% complete.',end='\r')
-  for j,I in enumerate(Irange):
-    for i in case.setup_classes:
-      if isinstance(i,wf.light_source):
-        i.laser.intensity = [str(I)]
-    Isrsvals[j] = Isrs(case,tavg)
-    print(f'{(j+1)/len(Irange):0.1%} complete.',end='\r')
+  if parallel:
+    func = partial(Isrs_las,case=case,tavg=tavg)
+    inps = np.reshape(Irange,(len(Irange),1))
+    Isrsvals = case.parallel_runs(func,inps,cpus)
+    Isrsvals = np.reshape(Isrsvals,len(Isrsvals))
+  else:
+    Isrsvals = np.zeros_like(Irange)
+    print('0% complete.',end='\r')
+    for j,I in enumerate(Irange):
+      for i in case.setup_classes:
+        if isinstance(i,wf.light_source):
+          i.laser.intensity = [str(I)]
+      Isrsvals[j] = Isrs(case,tavg)
+      print(f'{(j+1)/len(Irange):0.1%} complete.',end='\r')
+  print(f'100.0% complete.',end='\r')
 
   return Isrsvals
 
-def Isrs_dens(case,dens,dlabs,tavg,Isrs0,Irange):
+def Isrs_dens(case,dens,dlabs,tavg,Isrs0,Irange,\
+              x0=None,y0=None,parallel=False,cpus=1):
   isrs = {i:None for i in dlabs}
   for i in range(len(dens)):
     case.add_class(dens[i])
-    isrs[dlabs[i]] = Isrs_curve(case,tavg,Isrs0,Irange)
+    if x0 != None:
+      X0 = x0[dlabs[i]]
+      Y0 = y0[dlabs[i]]
+    else:
+      X0 = None; Y0 = None
+    isrs[dlabs[i]] = Isrs_curve(case,tavg,Isrs0,Irange,\
+                      X0,Y0,parallel,cpus)
   return isrs
 
 # Gets training set for GPyOpt of LW noise amp
-def amp_par(case,dens,dlabs,tavg,cpus,train):
+def amp_par(case,dens,dlabs,tavg,Isrs0,cpus,train):
   amps = np.linspace(0.005,0.025,train)
   amps = np.reshape(amps,(train,1))
   x0 = {i:amps for i in dlabs}; y0 = {}
   for i in range(len(dlabs)):
     case.add_class(dens[i])
     func = partial(noise_amp,case=case,tavg=tavg)
-    y0[dlabs[i]] = case.parallel_runs(func,amps,cpus)
+    res = case.parallel_runs(func,amps,cpus)
+    y0[dlabs[i]] = abs(res-Isrs0)
   
   return x0, y0
