@@ -224,10 +224,13 @@ class lpse_case:
     if self.verbose:
       print('Fields data extracted.')
 
-  def plot_metric(self,ky):
+  def plot_metric(self,ky,loglin=False):
     xdat = self.mdat['time']
     ydat = self.mdat[ky]
-    plt.plot(xdat,ydat,label=ky)
+    if loglin:
+      plt.semilogy(xdat,ydat,label=ky)
+    else:
+      plt.plot(xdat,ydat,label=ky)
     plt.xlabel('Time [ps]')
     plt.legend()
     plt.show()
