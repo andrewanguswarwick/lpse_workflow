@@ -90,7 +90,7 @@ def Isrs_curve(case,tavg,Isrs0,Irange,X0,Y0,parallel,cpus):
   # Get Isrs for range of laser intensities
   print('Obtaining <I_srs> for laser intensity range...')
   if parallel:
-    func = partial(Isrs_las,case=case,tavg=tavg)
+    func = partial(Isrs_las,case=copy.deepcopy(case),tavg=tavg)
     inps = np.reshape(Irange,(len(Irange),1))
     Isrsvals = case.parallel_runs(func,inps,cpus)
     Isrsvals = np.reshape(Isrsvals,len(Isrsvals))
@@ -128,7 +128,7 @@ def amp_par(case,dens,dlabs,tavg,Isrs0,cpus,train):
   x0 = {i:amps for i in dlabs}; y0 = {}
   for i in range(len(dlabs)):
     case.add_class(dens[i])
-    func = partial(noise_amp,case=case,tavg=tavg)
+    func = partial(noise_amp,case=copy.deepcopy(case),tavg=tavg)
     res = case.parallel_runs(func,amps,cpus)
     y0[dlabs[i]] = abs(res-Isrs0)
   
