@@ -145,6 +145,7 @@ class lpse_case:
     self.fkeys = None
     self.fdat = None
     self.verbose = False
+    self.plasmaFrequencyDensity = None
 
   # Methods 
   def add_class(self,obj):

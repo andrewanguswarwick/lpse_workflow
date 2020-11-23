@@ -66,7 +66,7 @@ def srs_theory(case,verbose=True):
 
   # Use bisect method to find k roots of SRS dispersion relation
   def bsrs(ks):
-    nonlocal omega_pe, vth, k0, omega0, c
+    nonlocal omega_pe, vth, k0, omega0
     omega_ek = np.sqrt(omega_pe**2 + 3*vth**2*(k0-ks)**2)
     res = (omega_ek-omega0)**2-ks**2-omega_pe**2
     return res
@@ -88,9 +88,10 @@ def srs_theory(case,verbose=True):
     print(f'Wavenumber matching error: {k0-ks-k_ek:0.3e}')
     print(f'Theory SRS growth rate = {gamma:0.3e}')
 
-  return gamma, np.array([k_ek,ks,k0]), omega_ek**2
+  return gamma, np.array([k_ek,ks,k0])
 
-def wavelength_matching(case,k,tol,max_iter=100,minints=2,verbose=True,opt=False):
+def wavelength_matching(case,k,tol,max_iter=100,minints=2,cells_per_wvl=30,\
+                        verbose=True,opt=False):
   # Extract relevant quantities
   for i in case.setup_classes:
     if isinstance(i,wf.light_control):
@@ -142,10 +143,15 @@ def wavelength_matching(case,k,tol,max_iter=100,minints=2,verbose=True,opt=False
     print(f'Max wavelengths in domain: {max_wvls}')
 
   # If adjusting rho and T only return wavelength mismatch
+  # Else specify mesh
   if opt:
     return reldiff
   else:
-    return dsize, max_wvls
+    for i in case.setup_classes:
+      if isinstance(i,wf.gridding):
+        i.grid.sizes = dsize
+        i.grid.nodes = max_wvls*cells_per_wvl+1
+        print(f'Using {i.grid.nodes-1} cells.')
 
 def rhoT_adjust(case,tol,max_iter,minints):
   # Get temperature and density starting points
@@ -180,7 +186,7 @@ def rhoT_opt(x,case,tol,max_iter,minints):
       i.physical.Te = T
 
   # Get wavenumbers
-  gamma, k, dfrac = srs_theory(case,verbose=False)
+  gamma, k = srs_theory(case,verbose=False)
 
   # Get domain mismatch
   mism = wavelength_matching(case,k,tol=tol,\
