@@ -174,6 +174,7 @@ def rhoT_adjust(case,tol,max_iter,minints):
       i.densityProfile.NmaxOverNc = res.x[0]
       i.physical.Te = res.x[1]
       i.physical.Ti = res.x[1]
+  case.plasmaFrequencyDensity = res.x[0]
 
   print(f'Optimised rho and T: {np.round(res.x,3)}')
 
