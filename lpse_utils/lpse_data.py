@@ -122,7 +122,7 @@ def get_fields(fname,ddict,dsample):
 
   # Populate dictionary for return
   ddict['time'] = hds['time']
-  assert hds['isXSpace'][0]=='t','Data in k space, need to modify code.'
+  #assert hds['isXSpace'][0]=='t','Data in k space, need to modify code.'
   xs = hds['gridSize'][0][0]/2.
   x = np.linspace(-xs,xs,hds['Nx'][0])
   ddict['x'] = x

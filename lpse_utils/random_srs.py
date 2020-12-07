@@ -1,6 +1,7 @@
 #!/bin/python3
 
 import write_files as wf
+import calc_inputs as ci
 import numpy as np
 from GPyOpt.methods import BayesianOptimization
 import copy
@@ -107,11 +108,15 @@ def Isrs_curve(case,tavg,Isrs0,Irange,X0,Y0,parallel,cpus):
 
   return Isrsvals
 
-def Isrs_dens(case,dens,dlabs,tavg,Isrs0,Irange,\
-              x0=None,y0=None,parallel=False,cpus=1):
+def Isrs_dens(ocase,dens,cdens,dlabs,tavg,Isrs0,Irange,\
+              x0=None,y0=None,parallel=False,cpus=1,cells_per_wvl=30):
   isrs = {i:None for i in dlabs}
   for i in range(len(dens)):
+    case = copy.deepcopy(ocase)
     case.add_class(dens[i])
+    case.plasmaFrequencyDensity = cdens[i]
+    freqs = ci.bsrs_lw_envelope(case,cells_per_wvl)
+    ci.spectral_dt(case,freqs)
     if x0 != None:
       X0 = x0[dlabs[i]]
       Y0 = y0[dlabs[i]]
@@ -122,13 +127,22 @@ def Isrs_dens(case,dens,dlabs,tavg,Isrs0,Irange,\
   return isrs
 
 # Gets training set for GPyOpt of LW noise amp
-def amp_par(case,dens,dlabs,tavg,Isrs0,cpus,train):
+def amp_par(ocase,dens,cdens,dlabs,tavg,Isrs0,cpus,train,cells_per_wvl):
   amps = np.linspace(0.005,0.025,train)
   amps = np.reshape(amps,(train,1))
   x0 = {i:amps for i in dlabs}; y0 = {}
   for i in range(len(dlabs)):
+    # Add density class
+    case = copy.deepcopy(ocase)
     case.add_class(dens[i])
-    func = partial(noise_amp,case=copy.deepcopy(case),tavg=tavg)
+
+    # Calculate LW envelope density and spectral timesteps
+    case.plasmaFrequencyDensity = cdens[i]
+    freqs = ci.bsrs_lw_envelope(case,cells_per_wvl)
+    ci.spectral_dt(case,freqs)
+
+    # Run case
+    func = partial(noise_amp,case=case,tavg=tavg)
     res = case.parallel_runs(func,amps,cpus)
     y0[dlabs[i]] = abs(res-Isrs0)
   

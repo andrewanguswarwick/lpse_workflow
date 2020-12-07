@@ -341,11 +341,11 @@ class lw_control:
       self.Labc = None # 0 # Distance of absorption zone from boundary [microns]
       self.abc = self.Abc()
       self.noise = self.Noise()
-      self.landauDamping = Enable() # 'false' # Landau damping switch
       self.collisionalDampingRate = None # 0.0 # [ps^-1]
       self.__dict__['collisionalDampingRate.isCalculated'] = None # 'false' # Auto calc
       self.kFilter = self.KFilter()
-      self.iclasses = (self.Spectral,self.Abc,self.Noise,Enable,self.KFilter)
+      self.landauDamping = self.LandauDamping()
+      self.iclasses = (self.Spectral,self.Abc,self.Noise,Enable,self.KFilter,self.LandauDamping)
     class Spectral:
       def __init__(self):
         self.dt = None # Spectral solver max timestep
@@ -364,6 +364,11 @@ class lw_control:
       def __init__(self):
         self.enable = None # 'false' # Filter spurious high wavenumbers
         self.scale = None # 1.2 # Envelope factor for cutoff
+        self.iclasses = ()
+    class LandauDamping:
+      def __init__(self):
+        self.enable = None # 'false' # Apply Landau damping to EPW
+        self.lowerThreshold = None # 1.2 # Force LD to zero if below this threshold
         self.iclasses = ()
 
   write = std_write
@@ -497,5 +502,28 @@ def light_package(obj,kwords=None,specs=None,prefix=None,nbeams=0):
       kwords.append(str(prefix or '')+i)
       specs.append(att)
   return kwords, specs
+
+# Light source class
+class initial_perturbation:
+  def __init__(self):
+    self.initialPerturbation = self.InitialPerturbation()
+    self.iclasses = (self.InitialPerturbation)
+
+  class InitialPerturbation:
+    def __init__(self):
+      self.enable = None # 'false'
+      self.field = None
+      self.type = None # planeWave
+      self.wavelength = None
+      self.direction = None # [1 0 0]
+      self.envelopeSize = None # [0 0 0]
+      self.envelopeOffset = None # [0 0 0]
+      self.amplitude = None # 1.0
+      self.iclasses = ()
+
+  # Write method
+  write = std_write
+  options = std_options
+
 
 
