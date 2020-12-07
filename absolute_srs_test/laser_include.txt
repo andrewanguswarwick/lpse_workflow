@@ -1,0 +1,10 @@
+laser.nBeams= 1;
+laser.wavelength= 0.351;
+
+laser.1.intensity = 1e+15;
+laser.1.phase = 0;
+laser.1.polarization = 90;
+laser.1.frequencyShift = 0;
+laser.1.group = 0;
+laser.1.direction = 1 0 0;
+
