@@ -5,14 +5,10 @@
 import write_files as wf
 import lpse_data as ld
 import random_srs as rs
-import matplotlib.pyplot as plt
 import numpy as np
 import copy
 import pickle
-import ihp
-from functools import partial
 from time import time as stopwatch
-import calc_inputs as ci
 
 # LPSE class
 lpse = ld.lpse_case()
@@ -173,7 +169,7 @@ Irange = np.logspace(14,16,20)
 if fresh_results:
   t0 = stopwatch()
   isrs = rs.Isrs_dens(lpse,dens,cdens,dlabs,tavg=tavg,Isrs0=Isrs0,Irange=Irange,x0=x0,y0=y0,\
-                      parallel=True,cpus=cpus,cells_per_wvl=cells_per_wvl)
+                      parallel=True,cpus=cpus,cells_per_wvl=cells_per_wvl,plot=False)
   t1 = stopwatch()
   print(f'Time taken: {t1-t0:0.3f}s')
   with open('isrs.pickle', 'wb') as f:

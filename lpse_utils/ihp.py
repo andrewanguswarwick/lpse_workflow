@@ -1,11 +1,11 @@
 import numpy as np
 import write_files as wf
 import scipy.constants as scc
-from scipy.optimize import bisect,differential_evolution
+from scipy.optimize import bisect,differential_evolution,minimize
 import matplotlib.pyplot as plt
 from functools import partial
 
-def srs_growth_error(case,gamma,gamma0):
+def srs_growth_error(case,gamma,gamma0,ld):
   # Extract relevant quantities
   for i in case.setup_classes:
     if isinstance(i,wf.light_control):
@@ -37,8 +37,11 @@ def srs_growth_error(case,gamma,gamma0):
 
   print(f'LPSE SRS growth rate is {p[0]:0.3e}')
   print(f'Undamped theory SRS growth rate is {gamma0:0.3e}')
-  print(f'Landau damped theory SRS growth rate is {gamma:0.3e}')
-  print(f'LPSE relative error = {(p[0]-gamma)/gamma:0.3%}')
+  if ld:
+    print(f'Landau damped theory SRS growth rate is {gamma:0.3e}')
+    print(f'LPSE relative error = {(p[0]-gamma)/gamma:0.3%}')
+  else:
+    print(f'LPSE relative error = {(p[0]-gamma0)/gamma0:0.3%}')
 
   return p
 
@@ -55,8 +58,13 @@ def srs_theory(case,verbose=True,pert = True,Isrs = 8.0e10):
 
   # Get theory SRS growth rate (dimensionless units)
   # Constants
+  meps = np.finfo(np.float64).eps
   c = scc.c; e = scc.e; pi = scc.pi
   me = scc.m_e; epsilon0 = scc.epsilon_0
+
+  # Thermal velocity
+  Ek = 0.5*Te*e/(me*c**2)
+  vth = np.sqrt(2*Ek)
 
   # Laser wavenumber in plasma
   kvac = 2*pi/lambda0
@@ -64,16 +72,11 @@ def srs_theory(case,verbose=True,pert = True,Isrs = 8.0e10):
   omega_pe = np.sqrt(den_frac)*omega0
   k0 = np.sqrt(omega0**2-omega_pe**2)
 
-  # Thermal velocity
-  Ek = Te*e/(me*c**2)
-  vth = np.sqrt(2*Ek)
-
   # Use bisect method to find k roots of SRS dispersion relation
-  kfac = 3/2
+  kfac = 3.0
   def bsrs(ks):
-    nonlocal omega_pe, vth, k0, omega0, kfac
     omega_ek = np.sqrt(omega_pe**2 + kfac*vth**2*(k0-ks)**2)
-    res = (omega_ek-omega0)**2-ks**2-omega_pe**2
+    res = (omega_ek-omega0)**2 - ks**2 - omega_pe**2
     return res
   ks = bisect(bsrs,-10,0) # Look for negative root for backscatter  
 
@@ -84,12 +87,18 @@ def srs_theory(case,verbose=True,pert = True,Isrs = 8.0e10):
 
   # Get quiver velocity and maximum growth rate
   I0star = I0*e**2/(epsilon0*c**5*me**2*kvac**2)
-  E0 = np.sqrt(2*I0star/omega0**2)
+  E0 = np.sqrt(2*I0star)
   vos = E0
   gamma0 = k_ek*vos/4*np.sqrt(omega_pe**2/(omega_ek*(omega0-omega_ek)))
+  
+  def gammaf(gamma):
+    #nonlocal omega_pe,omega_ek,k_ek,vos,omega0
+    res = gamma**2*(gamma**2-4*omega_ek**2+4*omega_ek*omega0)-omega_pe**2*k_ek**2*vos**2/4
+    return res
+  gamma00 = bisect(gammaf,0,1)  
 
   # Get Landau damping and apply correction
-  debye = np.sqrt(Ek/omega_ek**2)
+  debye = np.sqrt(2*Ek/omega_ek**2)
   dk = debye*k_ek
   LD = np.sqrt(pi/8)*omega_pe/dk**3*(1+1.5*dk**2)*np.exp(-1.5)*np.exp(-0.5/dk**2)
   gamma = gamma0*np.sqrt(1+(0.5*LD/gamma0)**2)-LD/2
@@ -106,7 +115,7 @@ def srs_theory(case,verbose=True,pert = True,Isrs = 8.0e10):
       I1star = Isrs*e**2/(epsilon0*c**5*me**2*kvac**2)
       i.initialPerturbation.amplitude = np.sqrt(2*I1star/omega_ek**2)
 
-  return gamma, gamma0, np.array([k_ek,ks,k0])
+  return gamma, gamma0, np.array([k0,ks,k_ek])
 
 def wavelength_matching(case,k,tol,max_iter=100,minints=2,cells_per_wvl=30,\
                         verbose=True,opt=False):
@@ -225,169 +234,86 @@ def srs_convergence(args,case,gamma,option='nodes'):
   return srs_growth_error(case,gamma)[-1]
   
 def srs_theory_curve(case,zerotemp=False):
-  # Extract relevant quantities from lpse class
-  for i in case.setup_classes:
-    if isinstance(i,wf.light_control):
-      lambda0 = np.float64(i.laser.wavelength)*1.0e-6
-    elif isinstance(i,wf.light_source):
-      I0 = np.float64(i.laser.intensity[0])*1.0e4
-  
   points = 100
   meps = np.finfo(np.float64).eps
-  den_frac = np.linspace(meps,0.242,points)
+  den_frac = np.linspace(meps,0.24,points)
   gammas = np.empty(0)
   gamma0s = np.empty(0)
   keks = np.empty(0)
   LDs = np.empty(0)
+  dks = np.empty(0)
+  I0 = 2.0e19
+  lambda0 = 351.0e-9
   if zerotemp:
-    Te = 0
+    Te = 0.01
   else:
-    Te = 3.5*1e3
+    Te = 3500.0
 
   # Get theory SRS growth rate (dimensionless units)
   # Constants
   c = scc.c; e = scc.e; pi = scc.pi
   me = scc.m_e; epsilon0 = scc.epsilon_0
   for i in range(points):
+    # Thermal velocity
+    A = 0.5
+    Ek = A*Te*e
+    vth = np.sqrt(2*Ek/me)
+
     # Laser wavenumber in plasma
     kvac = 2*pi/lambda0
-    omega0 = 1.0
+    omega0 = kvac*c
     omega_pe = np.sqrt(den_frac[i])*omega0
-    k0 = np.sqrt(omega0**2-omega_pe**2)
-
-    # Thermal velocity
-    Ek = 0.5*Te*e/(me*c**2)
-    vth = np.sqrt(2*Ek)
+    k0 = np.sqrt(omega0**2-omega_pe**2)/c
+    def em_dis(omega,k):
+      res = omega**2 - c**2*k**2 - omega_pe**2/(1-3*vth**2*k**2/omega**2)
+      return res
+    light = partial(em_dis,omega0)
+    k0 = bisect(light,0,1e20)
 
     # Use bisect method to find k roots of SRS dispersion relation
-    kfac = 3
-    def bsrs(ks):
-      nonlocal omega_pe, vth, k0, omega0, kfac
-      omega_ek = np.sqrt(omega_pe**2 + kfac*vth**2*(k0-ks)**2)
-      res = (omega_ek-omega0)**2-ks**2-omega_pe**2
+    cratio = 3
+    def bohmgross(k_ek):
+      nonlocal cratio, vth
+      return np.sqrt(omega_pe**2 + cratio*vth**2*k_ek**2)
+    def bsrs(k_ek):
+      nonlocal omega_pe, k0, omega0
+      omega_ek = bohmgross(k_ek)
+      #res = (omega_ek-omega0)**2-c**2*(k_ek-k0)**2-omega_pe**2
+      res = (omega_ek-omega0)**2-c**2*(k_ek-k0)**2-omega_pe**2/(1-3*vth**2*(k_ek-k0)**2/(omega_ek-omega0)**2)
       return res
-    ks = bisect(bsrs,-10,0) # Look for negative root for backscatter  
+    k_ek = bisect(bsrs,k0,2*k0) # Look for negative raman root for backscatter  
+    kcheck = k0 + omega0/c*np.sqrt(1-2*omega_pe/omega0)
 
-    # Get LW wavenumber by frequency matching and calculate remaining frequencies
-    k_ek = k0 - ks
-    omega_ek = np.sqrt(omega_pe**2 + kfac*vth**2*k_ek**2)
-    omega_s = np.sqrt(omega_pe**2 + ks**2)
+    # Get raman wavenumber by frequency matching and calculate remaining frequencies
+    ks = k0 - k_ek
+    omega_ek = bohmgross(k_ek)
+    raman = partial(em_dis,k=ks)
+    omega_s = bisect(raman,meps,1e20)
+    #omega_s = np.sqrt(omega_pe**2 + c**2*ks**2)
+    vp = omega_ek/k_ek
+    vg = 3*vth**2/vp
 
     # Get quiver velocity and maximum growth rate
-    I0star = I0*e**2/(epsilon0*c**5*me**2*kvac**2)
-    E0 = np.sqrt(2*I0star/omega0**2)
-    vos = E0
-    #vos = np.max(np.real(case.fdat['E0_z']['data'][0]))
+    E0 = np.sqrt(2*I0/(c*epsilon0))
+    vos = E0*e/(me*omega0)
     gamma0 = k_ek*vos/4*omega_pe/np.sqrt(omega_ek*omega_s)
 
     # Get Landau damping and apply correction
     debye = vth/omega_pe
-    dk = max(meps,debye*k_ek)
-    omega = 1+1.5*dk**2
-    Wk = omega_pe*omega
-    LD = np.sqrt(pi/8)*omega_pe/dk**3*(1+1.5*dk**2)*np.exp(-1.5)*np.exp(-0.5/dk**2)
-    #LD = np.sqrt(pi/8)*Wk/dk**3*np.exp(-0.5*(omega/dk)**2)
-    gamma = gamma0*np.sqrt(1+0.25*(LD/gamma0)**2)-LD/2
-    gammas = np.append(gammas,gamma)
-    gamma0s = np.append(gamma0s,gamma0)
-    keks = np.append(keks,k_ek)
-    LDs = np.append(LDs,LD)
+    debye = np.sqrt(Te*e/(omega_pe**2*me))
+    dk = debye*k_ek
+    LD = np.sqrt(pi/8)*omega_pe/dk**3*(1+1.5*dk**2)*np.exp(-1.5-0.5/dk**2)/2
+    
+    gamma = gamma0*np.sqrt(1+(0.5*LD/gamma0)**2)-0.5*LD
+    gammas = np.append(gammas,gamma/omega0)
+    gamma0s = np.append(gamma0s,gamma0/omega0)
+    keks = np.append(keks,k_ek/kvac)
+    LDs = np.append(LDs,LD/omega0)
+    dks = np.append(dks,dk)
     #print(f'Frequency matching error: {omega0-omega_s-omega_ek:0.3e}')
     #print(f'Wavenumber matching error: {k0-ks-k_ek:0.3e}')
     #print(f'Theory undamped SRS growth rate = {gamma0:0.3e}')
     #print(f'Theory Landau damped SRS growth rate = {gamma:0.3e}')
 
-  return den_frac, gammas, keks, gamma0s, LDs
-
-def srs_theory_zak(case,verbose=True,pert = True,Isrs = 8.0e10):
-  # Extract relevant quantities from lpse class
-  for i in case.setup_classes:
-    if isinstance(i,wf.light_control):
-      lambda0 = np.float64(i.laser.wavelength)*1.0e-6
-    elif isinstance(i,wf.physical_parameters):
-      den_frac = np.float64(i.densityProfile.NminOverNc)
-      Te = np.float64(i.physical.Te)*1e3
-      Ti = np.float64(i.physical.Ti)*1e3
-      Z = np.float64(i.physical.Z)
-      movm = np.float64(i.physical.MiOverMe)
-    elif isinstance(i,wf.light_source):
-      I0 = np.float64(i.laser.intensity[0])*1.0e4
-
-  # Get theory SRS growth rate (dimensionless units)
-  # Constants
-  c = scc.c; e = scc.e; pi = scc.pi
-  me = scc.m_e; epsilon0 = scc.epsilon_0
-
-  # Calculate eta and M for Zhakarov units
-  eta = (1.0+(3*Ti)/(Z*Te))
-  M = movm/(eta*Z)
-
-  # Laser wavenumber in plasma
-  kvac = 2*pi/lambda0
-  omega0 = 1.0
-  print(f'{omega0*kvac*c:0.5e}')
-  omega_pe = np.sqrt(den_frac)*omega0
-  k0 = np.sqrt(omega0**2-omega_pe**2)
-
-  # Thermal velocity
-  Ek = Te*e/(me*c**2)
-  vth = np.sqrt(Ek)
-  print(vth)
-  vthsi = vth*c
-  print(vthsi)
-  czak = c/vthsi*np.sqrt(M)
-  print(czak)
-
-  # Use bisect method to find k roots of SRS dispersion relation
-  kfac = 3
-  def bsrs(ks):
-    nonlocal omega_pe, vth, k0, omega0, kfac
-    omega_ek = np.sqrt(omega_pe**2 + kfac*vth**2*(k0-ks)**2)
-    res = (omega_ek-omega0)**2-ks**2-omega_pe**2
-    return res
-  ks = bisect(bsrs,-10,0) # Look for negative root for backscatter  
-
-  # Get LW wavenumber by frequency matching and calculate remaining frequencies
-  k_ek = k0 - ks
-  omega_ek = np.sqrt(omega_pe**2 + kfac*vth**2*k_ek**2)
-  omega_s = np.sqrt(omega_pe**2 + ks**2)
-
-  # Get quiver velocity and maximum growth rate
-  I0star = I0*e**2/(epsilon0*c**5*me**2*kvac**2)
-  E0 = np.sqrt(2*I0star/omega0**2)
-  vos = E0
-  E0 = np.sqrt(I0*2/(c*epsilon0))
-  E0 = E0*1.392e-2*1e-9
-  print(E0)
-  print(f'{(I0/1e4)/E0**2:0.4e}')
-  print(1-omega_ek**2/omega0**2)
-  print(f'{omega_ek*kvac*c:0.5e}')
-  print(np.sqrt(M))
-  vtest = np.sqrt(M)*0.346/0.295*1e6/c
-  print(vtest)
-  print(omega_s,omega_pe)
-  print(2*pi/(omega_s*kvac))
-  #vos = np.max(np.real(case.fdat['E0_z']['data'][0]))
-  gamma0 = k_ek*vos/4*np.sqrt(omega_pe**2/(omega_ek*(omega0-omega_ek)))
-
-  # Get Landau damping and apply correction
-  debye = np.sqrt(Ek/omega_ek**2)
-  print(debye/kvac*100)
-  dk = debye*k_ek
-  LD = np.sqrt(pi/8)*omega_ek/dk**3*(1+1.5*dk**2)*np.exp(-1.5)*np.exp(-0.5/dk**2)
-  gamma = gamma0*np.sqrt(1+(0.5*LD/gamma0)**2)-LD/2
-  if verbose:
-    print(f'Frequency matching error: {omega0-omega_s-omega_ek:0.3e}')
-    print(f'Wavenumber matching error: {k0-ks-k_ek:0.3e}')
-    print(f'Theory undamped SRS growth rate = {gamma0:0.3e}')
-    print(f'Theory Landau damped SRS growth rate = {gamma:0.3e}')
-
-  # Set initial perturbation
-  for i in case.setup_classes:
-    if isinstance(i,wf.initial_perturbation):
-      i.initialPerturbation.wavelength = abs(2*pi/(ks*kvac)*1e6)
-      I1star = Isrs*e**2/(epsilon0*c**5*me**2*kvac**2)
-      i.initialPerturbation.amplitude = np.sqrt(2*I1star/omega_ek**2)
-
-  return gamma, gamma0, np.array([k_ek,ks,k0])
+  return den_frac, gammas, keks, gamma0s, LDs, dks
 

@@ -2,9 +2,10 @@ import numpy as np
 import write_files as wf
 import scipy.constants as scc
 from scipy.optimize import bisect
+from functools import partial
 
 # 1D backscattered SRS LW frequency and wavelength calculation
-def bsrs_lw_envelope(case,cells_per_wvl=30,no_thermal=False):
+def bsrs_lw_envelope(case,cells_per_wvl=30):
   # Extract relevant quantities from lpse class
   den_frac = case.plasmaFrequencyDensity
   if den_frac == None:
@@ -16,34 +17,38 @@ def bsrs_lw_envelope(case,cells_per_wvl=30,no_thermal=False):
     elif isinstance(i,wf.light_control):
       lambda0 = np.float64(i.laser.wavelength)
 
+  # Get theory SRS growth rate (dimensionless units)
   # Constants
-  c = scc.c; e = scc.e; me = scc.m_e
+  meps = np.finfo(np.float64).eps
+  c = scc.c; e = scc.e; pi = scc.pi
+  me = scc.m_e; epsilon0 = scc.epsilon_0
+
+  # Thermal velocity
+  Ek = 0.5*Te*e/(me*c**2)
+  vth = np.sqrt(2*Ek)
 
   # Laser wavenumber in plasma
+  kvac = 2*pi/lambda0
   omega0 = 1.0
   omega_pe = np.sqrt(den_frac)*omega0
   k0 = np.sqrt(omega0**2-omega_pe**2)
 
-  # Thermal velocity
-  Ek = Te*e/(me*c**2)
-  vth = np.sqrt(Ek)
-
   # Use bisect method to find k roots of SRS dispersion relation
+  kfac = 3.0
   def bsrs(ks):
-    nonlocal omega_pe, vth, k0, omega0
-    omega_ek = np.sqrt(omega_pe**2 + 3*vth**2*(k0-ks)**2)
-    res = (omega_ek-omega0)**2-ks**2-omega_pe**2
+    omega_ek = np.sqrt(omega_pe**2 + kfac*vth**2*(k0-ks)**2)
+    res = (omega_ek-omega0)**2 - ks**2 - omega_pe**2
     return res
   ks = bisect(bsrs,-10,0) # Look for negative root for backscatter  
 
-  # Get LW wavenumber by resonance matching and calculate frequency
+  # Get LW wavenumber by frequency matching and calculate remaining frequencies
   k_ek = k0 - ks
-  omega_ek = np.sqrt(omega_pe**2 + 3*vth**2*k_ek**2)
-  omega_s = np.sqrt(omega_pe**2+ks**2)
-  if no_thermal:
-    den_frac = omega_pe**2
-  else:
-    den_frac = omega_ek**2
+  omega_ek = np.sqrt(omega_pe**2 + kfac*vth**2*k_ek**2)
+  omega_s = np.sqrt(omega_pe**2 + ks**2)
+  den_frac = omega_ek**2
+  #den_frac = den_frac*(1+3*vth**2*k_ek**2/omega_ek**2)
+  #den_frac = (omega_pe**2+np.sqrt(omega_pe**4+12*omega_pe**2*vth**2*k_ek**2))/2
+  #omega_ek = np.sqrt(den_frac)
 
   # Set lpse class attribute
   for i in case.setup_classes:
@@ -53,7 +58,6 @@ def bsrs_lw_envelope(case,cells_per_wvl=30,no_thermal=False):
     if isinstance(i,wf.gridding):
       k = np.array([k0,ks,k_ek])
       lams = lambda0/abs(k)
-      print(lams)
       i.grid.nodes = int(round(cells_per_wvl*i.grid.sizes/np.min(lams)))+1
       print(f'Using {i.grid.nodes-1} cells.')
 

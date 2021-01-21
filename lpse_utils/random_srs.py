@@ -65,7 +65,7 @@ def Isrs_las(Ilas,case,tavg):
   # Return Isrs
   return Isrs(case,tavg)
 
-def Isrs_curve(case,tavg,Isrs0,Irange,X0,Y0,parallel,cpus):
+def Isrs_curve(case,tavg,Isrs0,Irange,X0,Y0,parallel,cpus,plot):
   # Ensure laser intensity is base value
   for i in case.setup_classes:
     if isinstance(i,wf.light_source):
@@ -76,8 +76,9 @@ def Isrs_curve(case,tavg,Isrs0,Irange,X0,Y0,parallel,cpus):
   objf = lambda amp: abs(noise_amp(amp[0,0],case,tavg)-Isrs0)
   domain = [{'name':'amp','type':'continuous','domain':(0.005,0.025)}]
   Bopt = BayesianOptimization(f=objf,domain=domain,X=X0,Y=Y0)
-  Bopt.run_optimization(max_iter=5)
-  Bopt.plot_acquisition()
+  Bopt.run_optimization(max_iter=0)
+  if plot:
+    Bopt.plot_acquisition()
   amp0 = Bopt.x_opt[0]
   f0 = Bopt.fx_opt
   print(f'Best LW noise amplitude is: {amp0:0.5f}')
@@ -108,8 +109,8 @@ def Isrs_curve(case,tavg,Isrs0,Irange,X0,Y0,parallel,cpus):
 
   return Isrsvals
 
-def Isrs_dens(ocase,dens,cdens,dlabs,tavg,Isrs0,Irange,\
-              x0=None,y0=None,parallel=False,cpus=1,cells_per_wvl=30):
+def Isrs_dens(ocase,dens,cdens,dlabs,tavg,Isrs0,Irange,x0=None,\
+              y0=None,parallel=False,cpus=1,cells_per_wvl=30,plot=True):
   isrs = {i:None for i in dlabs}
   for i in range(len(dens)):
     case = copy.deepcopy(ocase)
@@ -123,7 +124,7 @@ def Isrs_dens(ocase,dens,cdens,dlabs,tavg,Isrs0,Irange,\
     else:
       X0 = None; Y0 = None
     isrs[dlabs[i]] = Isrs_curve(case,tavg,Isrs0,Irange,\
-                      X0,Y0,parallel,cpus)
+                      X0,Y0,parallel,cpus,plot)
   return isrs
 
 # Gets training set for GPyOpt of LW noise amp
