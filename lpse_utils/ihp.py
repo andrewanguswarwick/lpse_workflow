@@ -1,5 +1,6 @@
 import numpy as np
 import write_files as wf
+import calc_inputs as ci
 import scipy.constants as scc
 from scipy.optimize import bisect,differential_evolution,minimize
 import matplotlib.pyplot as plt
@@ -45,13 +46,16 @@ def srs_growth_error(case,gamma,gamma0,ld):
 
   return p
 
-def srs_theory(case,verbose=True,pert = True,Isrs = 8.0e10):
+def srs_theory(case,verbose=True,pert = True,Isrs = 8.0e14):
   # Extract relevant quantities from lpse class
+  den_frac = case.plasmaFrequencyDensity
+  if den_frac == None:
+    print("Error: lpse_case.plasmaFrequencyDensity not specified.")
+    return
   for i in case.setup_classes:
     if isinstance(i,wf.light_control):
       lambda0 = np.float64(i.laser.wavelength)*1.0e-6
     elif isinstance(i,wf.physical_parameters):
-      den_frac = np.float64(i.densityProfile.NminOverNc)
       Te = np.float64(i.physical.Te)*1e3
     elif isinstance(i,wf.light_source):
       I0 = np.float64(i.laser.intensity[0])*1.0e4
@@ -61,6 +65,7 @@ def srs_theory(case,verbose=True,pert = True,Isrs = 8.0e10):
   meps = np.finfo(np.float64).eps
   c = scc.c; e = scc.e; pi = scc.pi
   me = scc.m_e; epsilon0 = scc.epsilon_0
+  mu0 = scc.mu_0
 
   # Thermal velocity
   Ek = 0.5*Te*e/(me*c**2)
@@ -86,13 +91,22 @@ def srs_theory(case,verbose=True,pert = True,Isrs = 8.0e10):
   omega_s = np.sqrt(omega_pe**2 + ks**2)
 
   # Get quiver velocity and maximum growth rate
-  I0star = I0*e**2/(epsilon0*c**5*me**2*kvac**2)
-  E0 = np.sqrt(2*I0star)
+  Istar = I0/c**3*mu0/(me*omega0*kvac/e)**2
+  Evac = np.sqrt(2*Istar)
+  infla = 1/np.sqrt(np.sqrt(1-den_frac))
+  E0 = Evac*infla
+  I0star = I0/c**3*mu0/(me*omega0*kvac/e)**2
+  E00 = np.sqrt(2*I0star)
   vos = E0
+
   gamma0 = k_ek*vos/4*np.sqrt(omega_pe**2/(omega_ek*(omega0-omega_ek)))
+  if verbose:
+    print(vos/(omega0/k0))
+    print(vos/(gamma0/vos))
+    print(gamma0/omega_ek)
+    print(gamma0/omega_s)
   
   def gammaf(gamma):
-    #nonlocal omega_pe,omega_ek,k_ek,vos,omega0
     res = gamma**2*(gamma**2-4*omega_ek**2+4*omega_ek*omega0)-omega_pe**2*k_ek**2*vos**2/4
     return res
   gamma00 = bisect(gammaf,0,1)  
@@ -112,8 +126,11 @@ def srs_theory(case,verbose=True,pert = True,Isrs = 8.0e10):
   for i in case.setup_classes:
     if isinstance(i,wf.initial_perturbation):
       i.initialPerturbation.wavelength = abs(2*pi/(ks*kvac)*1e6)
-      I1star = Isrs*e**2/(epsilon0*c**5*me**2*kvac**2)
-      i.initialPerturbation.amplitude = np.sqrt(2*I1star/omega_ek**2)
+      Istar = Isrs/c**3*mu0/(me*omega_s*kvac/e)**2
+      Evac = np.sqrt(2*Istar)
+      den_frac1 = (omega_pe/omega_s)**2
+      infla = 1/np.sqrt(np.sqrt(1-den_frac1))
+      i.initialPerturbation.amplitude = Evac*infla
 
   return gamma, gamma0, np.array([k0,ks,k_ek])
 
@@ -180,7 +197,7 @@ def wavelength_matching(case,k,tol,max_iter=100,minints=2,cells_per_wvl=30,\
         i.grid.nodes = max_wvls*cells_per_wvl+1
         print(f'Using {i.grid.nodes-1} cells.')
 
-def rhoT_adjust(case,tol,max_iter,minints):
+def rhoT_adjust(case,tol,max_iter,minints,dden=0.05,dT=0.5):
   # Get temperature and density starting points
   for i in case.setup_classes:
     if isinstance(i,wf.physical_parameters):
@@ -190,8 +207,8 @@ def rhoT_adjust(case,tol,max_iter,minints):
   # Minimize wavelength mismatch around originals
   func = partial(rhoT_opt,case=case,tol=tol,\
       max_iter=max_iter,minints=minints)
-  bnds = ((max(0.01,den_frac-0.005),min(0.24,den_frac+0.005)),\
-          (max(0.1,Te-0.1),Te+0.1))
+  bnds = ((max(0.01,den_frac-dden),min(0.24,den_frac+dden)),\
+          (max(0.1,Te-dT),Te+dT))
   res = differential_evolution(func,tol=tol,bounds=bnds)
 
   # Set case parameters to optimum
@@ -211,7 +228,9 @@ def rhoT_opt(x,case,tol,max_iter,minints):
   for i in case.setup_classes:
     if isinstance(i,wf.physical_parameters):
       i.densityProfile.NminOverNc = rho
+      i.densityProfile.NmaxOverNc = rho
       i.physical.Te = T
+  case.plasmaFrequencyDensity = rho
 
   # Get wavenumbers
   scrap,scrapp,k = srs_theory(case,verbose=False)
@@ -236,7 +255,7 @@ def srs_convergence(args,case,gamma,option='nodes'):
 def srs_theory_curve(case,zerotemp=False):
   points = 100
   meps = np.finfo(np.float64).eps
-  den_frac = np.linspace(meps,0.24,points)
+  den_frac = np.linspace(1e-3,0.24,points)
   gammas = np.empty(0)
   gamma0s = np.empty(0)
   keks = np.empty(0)
@@ -316,4 +335,18 @@ def srs_theory_curve(case,zerotemp=False):
     #print(f'Theory Landau damped SRS growth rate = {gamma:0.3e}')
 
   return den_frac, gammas, keks, gamma0s, LDs, dks
+
+def lw_freq_curve(case,dens,T):
+  # Set T
+  for i in case.setup_classes:
+    if isinstance(i,wf.physical_parameters):
+      i.physical.Te = T
+
+  # Get LW freqs
+  freqs = np.zeros_like(dens)
+  for i in range(len(dens)):  
+    case.plasmaFrequencyDensity = dens[i]
+    freqs[i] = ci.bsrs_lw_envelope(case,verbose=False)[-1]
+
+  return freqs
 
