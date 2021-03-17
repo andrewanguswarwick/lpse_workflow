@@ -50,7 +50,75 @@ def get_metrics(fname):
   
   return cols, ddict
 
-def get_fields(fname,ddict,dsample):
+def get_fields(fname,ddict,dsample,zgE):
+
+  # If downsampling append suffix
+  if (dsample > 1):
+    fname = fname + f'.downSample_{dsample}'
+
+  # Use zgExtractFrames to convert to ascii
+  fnamebin = copy.deepcopy(fname)
+  fname = fname + '.ascii'
+  cmd = f'{zgE} --ascii --file= {fnamebin} > {fname}'
+  os.system(cmd)
+
+  # Strings separating headers and data
+  splitters = ['# BeginHeaderSegment;\n','# EndHeaderSegment;\n',\
+               '# BeginDataSegment;\n','# EndDataSegment;\n']
+
+  # Header dictionary entries
+  ents = ['FileType','isAscii','isBigEndian','isXSpace',\
+          'time','Nx','Ny','Nz','gridSize','offset']
+  hds = {i:[] for i in ents}
+
+  header = False
+  dat = {}; cnt = 0
+  # Read file and extract data
+  with open(fname,'r') as fp:
+    for line in fp:
+      # Check for file splitters
+      if (any(line == i for i in splitters)):
+        if (line == splitters[0]):
+          header = True
+          cnt += 1
+          dat[cnt] = np.empty(0,dtype='complex64')
+        if (line == splitters[1]):
+          header = False
+      else:
+        if (header):
+          # Read header information into dictionary
+          hd = line.strip().split(',')
+          hd[-1] = hd[-1].strip(';')
+          for i in range(len(hd)):
+            shd = hd[i].strip().split('=')
+            hds[shd[0]].append(shd[1])
+          hds['gridSize'][-1] = np.array(hds['gridSize'][-1].\
+                                        split(),'float64')
+        else:
+          # Add data line
+          num = line.strip('() \n').split(',')
+          num = float(num[0]) + 1j*float(num[1])
+          dat[cnt] = np.append(dat[cnt],num)
+          
+  # Convert necessary dictionary entries to numpy
+  hds['time'] = np.array(hds['time'],'float64')
+  hds['Nx'] = np.array(hds['Nx'],'int32')
+  hds['Ny'] = np.array(hds['Ny'],'int32')
+  hds['Nz'] = np.array(hds['Nz'],'int32')
+
+  # Populate dictionary for return (currently only does 1D)
+  ddict['time'] = hds['time']
+  #assert hds['isXSpace'][0]=='t','Data in k space, need to modify code.'
+  xs = hds['gridSize'][0][0]/2.
+  x = np.linspace(-xs,xs,hds['Nx'][0])
+  ddict['x'] = x
+  ddict['data'] = np.empty((0,hds['Nx'][0]))
+  for i in range(cnt):
+    ddict['data'] = np.append(ddict['data'],np.array([dat[i+1]]),axis=0)
+    
+  return ddict
+
+def get_fields_old(fname,ddict,dsample):
 
   # If downsampling append suffix
   if (dsample > 1):
@@ -205,13 +273,17 @@ class lpse_case:
     kys = [fnames[i].replace(self.dfp,'') \
                 for i in range(len(fnames))]
 
+    # Construct zgExtractFrames binary location string
+    zgE = copy.deepcopy(self.bin)
+    zgE = zgE.replace('lpse_cpu','utils/zgExtractFrames')
+
     # If no filename given do all data files
     if fname == None:
       self.fdat = {i:{} for i in kys}
       self.fkeys = kys
       for i in range(len(fnames)):
           self.fdat[kys[i]] = \
-            get_fields(fnames[i],self.fdat[kys[i]],dsamp) 
+            get_fields(fnames[i],self.fdat[kys[i]],dsamp,zgE) 
     else:
       ky = fname.replace(self.dfp,'')
       if self.fdat == None:
@@ -221,7 +293,7 @@ class lpse_case:
         self.fkeys.append(ky)
         self.fdat[ky] = {}
       self.fdat[ky] = \
-        get_fields(fname,self.fdat[ky],dsamp) 
+        get_fields(fname,self.fdat[ky],dsamp,zgE) 
     if self.verbose:
       print('Fields data extracted.')
 
