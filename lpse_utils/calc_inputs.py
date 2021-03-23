@@ -5,7 +5,7 @@ from scipy.optimize import bisect
 from functools import partial
 
 # 1D backscattered SRS LW frequency and wavelength calculation
-def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False):
+def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False,return_all=False):
   # Extract relevant quantities from lpse class
   den_frac0 = case.plasmaFrequencyDensity
   if den_frac0 == None:
@@ -17,14 +17,8 @@ def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False):
     elif isinstance(i,wf.light_control):
       lambda0 = np.float64(i.laser.wavelength)
     elif isinstance(i,wf.light_source):
-      try:
-        I0 = np.float64(i.laser.intensity[0])*1.0e4
-      except:
-        I0 = 0
-      try:
-        I1 = np.float64(i.raman.intensity[0])*1.0e4
-      except:
-        I1 = 8e5
+      I0 = np.float64(i.laser.intensity[0])*1.0e4
+      I1 = np.float64(i.raman.intensity[0])*1.0e4
 
   # Get theory SRS growth rate (dimensionless units)
   # Constants
@@ -91,7 +85,11 @@ def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False):
       infla = 1/np.sqrt(np.sqrt(1-den_frac1))
       i.initialPerturbation.amplitude = Evac*infla
       
-  return [omega0,omega_s,omega_ek]
+  if return_all:
+    dby = vth/omega_pe
+    return [omega0,omega_s,omega_ek],[k0,ks,k_ek],kvac,vth,dby
+  else:
+    return [omega0,omega_s,omega_ek]
 
 # Calculates max spectral dt for avoiding artifacts
 def spectral_dt(case,freqs,D=1,dt_frac=0.95,verbose=False):
