@@ -1,11 +1,12 @@
 import numpy as np
 import write_files as wf
 import scipy.constants as scc
-from scipy.optimize import bisect
+from scipy.optimize import bisect,minimize,newton
+from scipy.special import wofz
 from functools import partial
 
 # 1D backscattered SRS LW frequency and wavelength calculation
-def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False,return_all=False):
+def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False,return_all=False,dispfun=False):
   # Extract relevant quantities from lpse class
   den_frac0 = case.plasmaFrequencyDensity
   if den_frac0 == None:
@@ -49,10 +50,52 @@ def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False,return_all=False):
   k_ek = k0 - ks
   omega_ek = np.sqrt(omega_pe**2 + kfac*vth**2*k_ek**2)
   omega_s = np.sqrt(omega_pe**2 + ks**2)
+
+  # Get Landau damping rate
+  dby = vth/omega_pe
+  dk = dby*k_ek
+  LD = np.sqrt(pi/8)*omega_pe/dk**3*(1+1.5*dk**2)*np.exp(-1.5-0.5/dk**2)/2
+
+  # Refine analytic calculations with plasma dispersion function
+  if dispfun:
+    # Define calculation of permittivity using dispersion function
+    def Zfun(zeta):
+      return 1j*np.sqrt(np.pi)*wofz(zeta)
+    def dZfun(zeta):
+      return -2*(1+zeta*Zfun(zeta))
+    def perm(omega,k):
+      re,im = omega
+      omega = re + 1j*im
+      K = k*dby
+      zeta = (omega/omega_pe)/(np.sqrt(2)*K)
+      return abs(1 - dZfun(zeta)/(2*K**2))
+
+    # Initial omega and permittivity
+    if verbose:
+      print('Initial')
+      print(f'Omega_ek: {omega_ek-1j*LD}')
+      print(f'Permittivity: {abs(perm([omega_ek,-LD],k_ek))}\n')
+
+    # Find permittivity root, update k_ek by srs resonance and iterate
+    conv = 1; tol = 1e-7; n = 1; om = [omega_ek,-LD]
+    while conv > tol and n < 10:
+      res = minimize(perm,om,args=(k_ek,))
+      om = res.x
+      omega_s = 1-om[0]
+      ks = -np.sqrt(omega_s**2-omega_pe**2)
+      k_ek = k0 - ks
+      conv = perm(om,k_ek)
+      n += 1
+    omega_ek = om[0]; LD = -om[1]
+
+    # Final omega and permittivity
+    if verbose:
+      print('Final')
+      print(f'Omega_ek: {omega_ek-1j*LD}')
+      print(f'Permittivity: {abs(perm(om,k_ek))}\n')
+
+  # Set new envelope density
   den_frac = omega_ek**2
-  #den_frac = den_frac*(1+3*vth**2*k_ek**2/omega_ek**2)
-  #den_frac = (omega_pe**2+np.sqrt(omega_pe**4+12*omega_pe**2*vth**2*k_ek**2))/2
-  #omega_ek = np.sqrt(den_frac)
 
   # Set lpse class attribute
   for i in case.setup_classes:
@@ -63,7 +106,7 @@ def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False,return_all=False):
     if isinstance(i,wf.gridding):
       k = np.array([k0,ks,k_ek])
       lams = lambda0/abs(k)
-      i.grid.nodes = int(round(cells_per_wvl*i.grid.sizes/np.min(lams)))+1
+      #i.grid.nodes = int(round(cells_per_wvl*i.grid.sizes/np.min(lams)))+1
       if verbose:
         print(f'Using {i.grid.nodes-1} cells.')
 
@@ -86,8 +129,7 @@ def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False,return_all=False):
       i.initialPerturbation.amplitude = Evac*infla
       
   if return_all:
-    dby = vth/omega_pe
-    return [omega0,omega_s,omega_ek],[k0,ks,k_ek],kvac,vth,dby
+    return [omega0,omega_s,omega_ek],[k0,ks,k_ek],kvac*1e6,vth,dby,LD
   else:
     return [omega0,omega_s,omega_ek]
 
