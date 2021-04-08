@@ -47,7 +47,7 @@ def srs_growth_error(case,gamma,gamma0,ld):
 
   return p
 
-def srs_theory(case,verbose=True,inflation=True,dispfun=False):
+def srs_theory(case,verbose=True,inflation=True,dispfun=False,relativistic=True):
   # Get case quantities
   den_frac0 = case.plasmaFrequencyDensity
   for i in case.setup_classes:
@@ -55,7 +55,7 @@ def srs_theory(case,verbose=True,inflation=True,dispfun=False):
       I0 = np.float64(i.laser.intensity[0])*1.0e4
 
   # Get resonant frequencies and wavenumbers
-  freqs,wavens,kvac,vth,dby,LD = ci.bsrs_lw_envelope(case,return_all=True,dispfun=dispfun,verbose=verbose)
+  freqs,wavens,kvac,vth,dby,LD = ci.bsrs_lw_envelope(case,30,verbose,True,dispfun,relativistic)
   omega0,omega_s,omega_ek = freqs
   k0,ks,k_ek = wavens
   omega_pe = vth/dby
@@ -68,11 +68,12 @@ def srs_theory(case,verbose=True,inflation=True,dispfun=False):
     E0 *= infla
   vos = E0
   gamma0 = k_ek*vos/4*np.sqrt(omega_pe**2/(omega_ek*(omega0-omega_ek)))
+  if verbose:
+    print(np.array([wavens])*kvac/1e6)
+    print(wavens,kvac)
 
-  # Get Landau damping and apply correction
+  # Apply LD correction
   dk = dby*k_ek
-  if not dispfun:
-    LD = np.sqrt(np.pi/8)*omega_pe/dk**3*(1+1.5*dk**2)*np.exp(-1.5)*np.exp(-0.5/dk**2)
   gamma = gamma0*np.sqrt(1+(0.5*LD/gamma0)**2)-LD/2
   if verbose:
     print(f'Frequency matching error: {omega0-omega_s-omega_ek:0.3e}')
@@ -145,7 +146,7 @@ def wavelength_matching(case,k,tol,max_iter=100,minints=2,cells_per_wvl=30,\
         i.grid.nodes = max_wvls*cells_per_wvl+1
         print(f'Using {i.grid.nodes-1} cells.')
 
-def rhoT_adjust(case,tol,max_iter,minints,dden=0.05,dT=0.5,infl=True,disp=False):
+def rhoT_adjust(case,tol,max_iter,minints,dden=0.01,dT=0.5,infl=True,disp=False):
   global inflation, dispfun
   inflation = infl; dispfun = disp
   # Get temperature and density starting points

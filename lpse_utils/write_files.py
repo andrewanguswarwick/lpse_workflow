@@ -70,6 +70,7 @@ class job_control:
     self.title = None # Title for run
     self.verbose = None # 2 # amount of output, value in range [-1,5]
     self.seed = None # 0 # 0 for random, any other integer for fixed seed
+    self.isRelativistic = None # True # Relativistic corrections applied
     
     # Inner classes
     self.resources = self.Resources()
