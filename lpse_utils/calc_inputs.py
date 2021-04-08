@@ -2,11 +2,11 @@ import numpy as np
 import write_files as wf
 import scipy.constants as scc
 from scipy.optimize import bisect,minimize,newton
-from scipy.special import wofz
+from scipy.special import wofz,kn,erfc
 from functools import partial
 
 # 1D backscattered SRS LW frequency and wavelength calculation
-def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False,return_all=False,dispfun=False):
+def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False,return_all=False,dispfun=False,relativistic=True):
   # Extract relevant quantities from lpse class
   den_frac0 = case.plasmaFrequencyDensity
   if den_frac0 == None:
@@ -15,6 +15,7 @@ def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False,return_all=False,dispfu
   for i in case.setup_classes:
     if isinstance(i,wf.physical_parameters):
       Te = np.float64(i.physical.Te)*1.0e3
+      mime = i.physical.MiOverMe
     elif isinstance(i,wf.light_control):
       lambda0 = np.float64(i.laser.wavelength)
     elif isinstance(i,wf.light_source):
@@ -37,14 +38,16 @@ def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False,return_all=False,dispfu
   omega0 = 1.0
   omega_pe = np.sqrt(den_frac0)*omega0
   k0 = np.sqrt(omega0**2-omega_pe**2)
+  dby = vth/omega_pe
 
   # Use bisect method to find k roots of SRS dispersion relation
   kfac = 3.0
   def bsrs(ks):
     omega_ek = np.sqrt(omega_pe**2 + kfac*vth**2*(k0-ks)**2)
+    K = (k0-ks)*dby
     res = (omega_ek-omega0)**2 - ks**2 - omega_pe**2
     return res
-  ks = bisect(bsrs,-10,0) # Look for negative root for backscatter  
+  ks = bisect(bsrs,-5,0) # Look for negative root for backscatter  
 
   # Get LW wavenumber by frequency matching and calculate remaining frequencies
   k_ek = k0 - ks
@@ -52,9 +55,11 @@ def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False,return_all=False,dispfu
   omega_s = np.sqrt(omega_pe**2 + ks**2)
 
   # Get Landau damping rate
-  dby = vth/omega_pe
   dk = dby*k_ek
-  LD = np.sqrt(pi/8)*omega_pe/dk**3*(1+1.5*dk**2)*np.exp(-1.5-0.5/dk**2)/2
+  LD = np.sqrt(pi/8)/dk**3*omega_ek*np.exp(-0.5*omega_ek**2/(k_ek*vth)**2)/2
+  if relativistic:
+    a = 1/(vth**2*np.sqrt(1-omega_ek**2/k_ek**2))
+    LD = 0.25/dk**3*omega_ek*vth**5*a**3*(kn(0,a)+kn(2,a))*np.exp(1/vth**2)/(1+vth**2)/2
 
   # Refine analytic calculations with plasma dispersion function
   if dispfun:
@@ -68,7 +73,10 @@ def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False,return_all=False,dispfu
       omega = re + 1j*im
       K = k*dby
       zeta = (omega/omega_pe)/(np.sqrt(2)*K)
-      return abs(1 - dZfun(zeta)/(2*K**2))
+      #return abs(1 - dZfun(zeta)/(2*K**2))
+      isus = -dZfun(zeta*np.sqrt(mime))/(2*K**2)
+      esus = -dZfun(zeta)/(2*K**2)
+      return abs(1+esus+isus)
 
     # Initial omega and permittivity
     if verbose:
@@ -106,7 +114,7 @@ def bsrs_lw_envelope(case,cells_per_wvl=30,verbose=False,return_all=False,dispfu
     if isinstance(i,wf.gridding):
       k = np.array([k0,ks,k_ek])
       lams = lambda0/abs(k)
-      #i.grid.nodes = int(round(cells_per_wvl*i.grid.sizes/np.min(lams)))+1
+      i.grid.nodes = int(round(cells_per_wvl*i.grid.sizes/np.min(lams)))+1
       if verbose:
         print(f'Using {i.grid.nodes-1} cells.')
 
