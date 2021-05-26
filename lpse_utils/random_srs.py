@@ -10,6 +10,9 @@ from scipy.special import wofz
 import scipy.constants as scc
 from scipy.optimize import minimize,newton
 from scipy.integrate import solve_ivp
+from scipy.interpolate import PchipInterpolator, Akima1DInterpolator,interp1d
+import GPy
+import matplotlib.pyplot as plt
 
 def Isrs(case,tavg,splits,cpw=8,verbose=False):
   # Get necessary attributes from setup classes
@@ -176,6 +179,21 @@ def Isrs14(I14,case,tavg,splits,cpw,rt=False,verbose=False,savingI0=False):
       if verbose:
         print(f'Raman seed intensity: {I14/gain:0.3e} W/cm^2')
 
+# Plasma dispersion function derivative
+def dZfun(zeta):
+  Z = 1j*np.sqrt(np.pi)*wofz(zeta)
+  return -2*(1+zeta*Z)
+
+# Coupling coefficient for ray trace LPI
+def grfun(x):
+  omek,kek,vth,ne = x
+  zeta = omek/(kek*vth*np.sqrt(2))
+  dZ = dZfun(zeta)
+  esus = -ne/(2*kek**2*vth**2)*dZ
+  Fij = np.imag(0.25/(1+esus))
+  return -2*Fij
+
+# Debayle 1D ray trace w SRS
 def ray_trace(ocase,points=101,return_all=False,noise=False):
   # Extract relevant quantities from case
   case = copy.deepcopy(ocase)
@@ -206,10 +224,6 @@ def ray_trace(ocase,points=101,return_all=False,noise=False):
   freqs,wavens,kvac,vth,dby,LD = ci.bsrs_lw_envelope(case,return_all=True,dispfun=True)
   omega_pe = vth/dby
 
-  # Plasma dispersion function derivative
-  def dZfun(zeta):
-    Z = 1j*np.sqrt(np.pi)*wofz(zeta)
-    return -2*(1+zeta*Z)
 
   # Calculate coupling constant across domain
   gr = np.zeros_like(x)
@@ -230,60 +244,78 @@ def ray_trace(ocase,points=101,return_all=False,noise=False):
     kram[i] = -np.sqrt(freqs[1]**2-ope**2)
     kl = klas[i]-kram[i]
 
-    # Coupling factor function
-    def coupling_res(omlw,klw):
-      zeta = omlw/(klw*vth*np.sqrt(2))
-      dZ = dZfun(zeta)
-      dZi = dZfun(zeta*np.sqrt(mime))
-      sus = -n[i]/(2*klw**2*vth**2)
-      Fij = np.imag(0.25*(1+sus*dZi)/(1+sus*dZ+sus*dZi))
-      #Fij = np.imag(0.25/(1+sus*dZ))
-      return Fij
-    if noise:
-      grres[i] = -2*coupling_res(freqst[2],wavenst[2])
 
-    # Get coupling factor at raman frequency of interest
-    gr[i] = -2*coupling_res(freqs[2],wavens[2])
+    # Get coupling factors
+    garg = np.array([freqs[2],wavens[2],vth,n[i]])
+    gr[i] = grfun(garg)
+    if noise:
+      garg = np.array([freqst[2],wavenst[2],vtht,n[i]])
+      grres[i] = grfun(garg)
+
+  # Train GPs for gr/grres against x (x star?)
+  xn = (x-xmin)*kvac
+  xnmean = np.mean(xn); xnstd = np.std(xn)
+  xtrain = (xn.reshape((points,1))-xnmean)/xnstd
+  ytrain = np.log(gr).reshape(points,1)
+  kern = GPy.kern.Matern32(1)
+  meps = np.finfo(np.float64).eps
+  m = GPy.models.GPRegression(xtrain,ytrain,kern,noise_var=meps,normalizer=True)
+  m.likelihood.fix()
+  m.optimize_restarts(10,verbose=False)
 
   # Initialise intensity arrays
   normf = scc.m_e**2*scc.c**3*kvac**2/(scc.e**2*scc.mu_0)
   I1 = np.ones_like(x)
   I0 = np.ones_like(x)
   I1 *= I10/normf; I0 *= I00/normf
+  I1nf = PchipInterpolator(xn,I1) 
+  I0f = PchipInterpolator(xn,I0) 
+  I1f = PchipInterpolator(xn,I1) 
   I1 /= freqs[1]*abs(kram); I0 /= klas
   #I1[:-1] = 0.0; I0[1:] = 0.0
-  I1n = copy.deepcopy(I1)
 
   # Get divergence of dr/dt
-  xn = (x-xmin)*kvac
   dx = (xn[1]-xn[0])
   divlas = np.gradient(klas,dx)
   divram = np.gradient(kram/freqs[1],dx)
 
+  # Fit monotonic interpolations to fixed arrays
+  dlas = PchipInterpolator(xn,divlas) 
+  dram = PchipInterpolator(xn,divram) 
+  kla = PchipInterpolator(xn,klas) 
+  kra = PchipInterpolator(xn,kram) 
+  grf = PchipInterpolator(xn,gr) 
+  grresf = PchipInterpolator(xn,grres) 
+
   # ODE evolution functions
   def Flas(xi,I0i):
-    kl = np.interp(xi,xn,klas)
-    gr0 = np.interp(xi,xn,gr)
-    gr1 = np.interp(xi,xn,grres)
-    I1i = np.interp(xi,xn,I1)
-    I1in = np.interp(xi,xn,I1n)
-    dla = np.interp(xi,xn,divlas)
+    xpred = np.array([[(xi-xnmean)/xnstd]])
+    pr,prvar = m.predict(xpred)
+    gr0 = np.exp(pr[:,0])
+    #gr0 = grf(xi)
+    gr1 = grresf(xi)
+    kl = kla(xi)
+    dla = dlas(xi)
+    I1i = I1f(xi)/(freqs[1]*abs(kra(xi)))
+    I1in = I1nf(xi)/(freqs[1]*abs(kra(xi)))
     if noise:
       return -I0i/kl*(gr0*I1i+gr1*I1in)-dla*I0i/kl
     return -I0i/kl*(gr0*I1i)-dla*I0i/kl
   def Fram(xi,I1i):
-    kr = np.interp(xi,xn,kram)
-    gr0 = np.interp(xi,xn,gr)
-    gr1 = np.interp(xi,xn,grres)
-    I0i = np.interp(xi,xn,I0)
-    I1in = np.interp(xi,xn,I1n)
-    dra = np.interp(xi,xn,divram)
+    xpred = np.array([[(xi-xnmean)/xnstd]])
+    pr,prvar = m.predict(xpred)
+    gr0 = np.exp(pr[0,0])
+    #gr0 = grf(xi)
+    gr1 = grresf(xi)
+    kr = kra(xi)
+    I0i = I0f(xi)/kla(xi)
+    I1in = I1nf(xi)/(freqs[1]*abs(kra(xi)))
+    dra = dram(xi)
     if noise:
       return -(I0i/abs(kr)*(gr0*I1i+gr1*I1in)-dra*I1i*freqs[1]/abs(kr))
     return -(I0i/abs(kr)*(gr0*I1i)-dra*I1i*freqs[1]/abs(kr))
 
   # Evolve intensities across domain and iterate to convergence
-  meps = np.finfo(np.float64).eps
   niter = 0; tol = 1e-10; conv = 1
   while (conv > tol and niter < 500):
     I0old = copy.deepcopy(I0)
@@ -293,16 +325,18 @@ def ray_trace(ocase,points=101,return_all=False,noise=False):
       I0[i+1] = np.maximum(res.y[0][-1],0)
       res = solve_ivp(Fram,(xn[i+1],xn[i]),np.array([I1[i+1]]),method='RK23')
       I1[i] = res.y[0][-1]
+    I0f = PchipInterpolator(xn,I0*klas) 
+    I1f = PchipInterpolator(xn,I1*abs(kram)*freqs[1]) 
     niter += 1
     conv = np.sum(abs(I0-I0old)+abs(I1-I1old))
-    #print(niter,conv)
+    print(niter,conv)
 
   # Return stolen units
   I1 *= freqs[1]*abs(kram); I0 *= klas
   I0 *= normf*1e-4; I1 *= normf*1e-4
       
   if return_all:
-    return x,n,I0,I1
+    return xn,n,I0,I1,gr,grres
   else:
     return abs(I1[0])
 
